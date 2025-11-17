@@ -36,10 +36,10 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Use process.cwd() in production (Vercel) or resolve from __dirname in development
 const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname, "../..");
 dotenv.config({ path: path.join(projectRoot, ".env") });
 const apiBaseUrl = process.env.BASE_URL;
+
 
 /* ----------------------------- IMPORTS ----------------------------- */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
