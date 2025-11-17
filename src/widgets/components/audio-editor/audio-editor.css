@@ -241,7 +241,8 @@ body {
   border-radius: .5rem;
   box-shadow: 0 4px 12px rgba(13, 13, 13, 0.1);
   z-index: 20;
-  /* min-width: 140px; */
+  min-width: 140px;
+  width: 170px;
   overflow: hidden;
   padding: 5px;
 }
@@ -278,6 +279,7 @@ body {
   position: relative;
   background: var(--gray-light);
   border-bottom: 1px solid var(--border-subtle);
+  z-index: 0;
 }
 
 /* Ensure proper spacing between sections */

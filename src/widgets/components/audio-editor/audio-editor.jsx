@@ -9,7 +9,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./audio-editor.css";
-import { useToolOutput, useSendFollowUpMessage } from "../../hooks/useOpenAI";
+import { useToolOutput, useSendFollowUpMessage, useOpenAIGlobals } from "../../hooks/useOpenAI";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -175,10 +175,48 @@ const OUTPUT_FORMAT_OPTIONS = [
   { value: "flac", label: "FLAC" },
   { value: "ogg", label: "OGG (Opus)" },
   { value: "m4a", label: "M4A (AAC)" },
+  { value: "m4r", label: "M4R (iOS Ringtone)" },
 ];
 
-const DEFAULT_OUTPUT_FORMAT = "mp3";
+const RINGTONE_FORMAT_OPTIONS = [
+  { value: "m4r", label: "iPhone (.m4r)" },
+  { value: "ogg", label: "Android (.ogg)" },
+];
+
 const SUPPORTED_OUTPUT_FORMATS = OUTPUT_FORMAT_OPTIONS.map((option) => option.value);
+
+// Platform detection function
+const detectPlatform = (userAgentInfo) => {
+  const deviceType = userAgentInfo?.device?.type;
+  
+  // Check if mobile/tablet device
+  if (deviceType === 'mobile' || deviceType === 'tablet') {
+    const ua = navigator.userAgent.toLowerCase();
+    if (/iphone|ipad|ipod/.test(ua)) {
+      return 'ios';
+    }
+    if (/android/.test(ua)) {
+      return 'android';
+    }
+  }
+  
+  return 'unknown';
+};
+
+// Get default format based on platform
+const getDefaultFormatForPlatform = (userAgentInfo) => {
+  const platform = detectPlatform(userAgentInfo);
+  if (platform === 'ios') {
+    return 'm4r';
+  }
+  if (platform === 'android') {
+    return 'ogg';
+  }
+  return 'mp3';
+};
+
+// Default format will be set in component using openAIGlobals
+const DEFAULT_OUTPUT_FORMAT = "mp3"; // Fallback default
 
 const normalizeOutputFormat = (value) => {
   if (!value || typeof value !== "string") {
@@ -191,8 +229,17 @@ const normalizeOutputFormat = (value) => {
 export function AudioEditor() {
   // Get audio URL from ChatGPT tool output (if user uploaded a file)
   const toolOutput = useToolOutput();
+  const openAIGlobals = useOpenAIGlobals();
+  const isRingtoneMode = toolOutput?.mode === "ringtone";
+  const platform = detectPlatform(openAIGlobals.userAgent);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [outputFormat, setOutputFormat] = useState(DEFAULT_OUTPUT_FORMAT);
+  const [outputFormat, setOutputFormat] = useState(() => {
+    // Initialize with platform-specific default
+    if (isRingtoneMode) {
+      return platform === 'ios' ? 'm4r' : 'ogg';
+    }
+    return getDefaultFormatForPlatform(openAIGlobals.userAgent);
+  });
   const [trackName, setTrackName] = useState("");
   const [fadeInEnabled, setFadeInEnabled] = useState(false);
   const [fadeOutEnabled, setFadeOutEnabled] = useState(false);
@@ -227,19 +274,28 @@ export function AudioEditor() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState(null);
   const [generationSuccess, setGenerationSuccess] = useState("");
+  const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const sendFollowUpMessage = useSendFollowUpMessage();
 
   useEffect(() => {
     setGenerationError(null);
     setGenerationSuccess("");
+    setDownloadUrl(null);
   }, [outputFormat]);
 
   useEffect(() => {
     if (toolOutput?.defaultFormat) {
       setOutputFormat(normalizeOutputFormat(toolOutput.defaultFormat));
+    } else {
+      // If no default format from tool output, use platform-specific default
+      if (isRingtoneMode) {
+        setOutputFormat(platform === 'ios' ? 'm4r' : 'ogg');
+      } else {
+        setOutputFormat(getDefaultFormatForPlatform(openAIGlobals.userAgent));
+      }
     }
-  }, [toolOutput?.defaultFormat]);
+  }, [toolOutput?.defaultFormat, toolOutput?.mode, openAIGlobals.userAgent, isRingtoneMode, platform]);
 
   useEffect(() => {
     // Log only serializable properties to avoid DataCloneError
@@ -392,6 +448,56 @@ export function AudioEditor() {
     }
 
     return filteredData;
+  };
+
+  // Find the best 30-second segment for ringtone based on energy analysis
+  const findBestRingtoneSegment = (audioBuffer, targetDuration = 30) => {
+    const rawData = audioBuffer.getChannelData(0); // Use first channel
+    const sampleRate = audioBuffer.sampleRate;
+    const totalDuration = audioBuffer.duration;
+    
+    // If audio is shorter than target duration, use the whole thing
+    if (totalDuration <= targetDuration) {
+      return { start: 0, end: 1.0 }; // Normalized to 0-1
+    }
+    
+    // Analyze energy in 1-second windows
+    const windowSize = sampleRate; // 1 second of samples
+    const windows = [];
+    
+    for (let i = 0; i < rawData.length - windowSize; i += Math.floor(windowSize / 4)) {
+      let sumSquares = 0;
+      for (let j = i; j < i + windowSize && j < rawData.length; j++) {
+        sumSquares += rawData[j] * rawData[j];
+      }
+      const rms = Math.sqrt(sumSquares / windowSize);
+      const time = i / sampleRate;
+      windows.push({ time, rms });
+    }
+    
+    // Find the best targetDuration-second window
+    const targetWindows = Math.ceil(targetDuration);
+    let bestStart = 0;
+    let bestEnergy = 0;
+    
+    for (let i = 0; i <= windows.length - targetWindows; i++) {
+      let sumEnergy = 0;
+      for (let j = i; j < i + targetWindows && j < windows.length; j++) {
+        sumEnergy += windows[j].rms;
+      }
+      const avgEnergy = sumEnergy / targetWindows;
+      
+      if (avgEnergy > bestEnergy) {
+        bestEnergy = avgEnergy;
+        bestStart = windows[i].time;
+      }
+    }
+    
+    // Convert to normalized positions (0-1)
+    const startNormalized = bestStart / totalDuration;
+    const endNormalized = Math.min((bestStart + targetDuration) / totalDuration, 1);
+    
+    return { start: startNormalized, end: endNormalized };
   };
 
   // Extract filename from audio file path
@@ -671,19 +777,52 @@ export function AudioEditor() {
         });
         setTrackName(displayName);
         
-        // Initialize trim positions based on actual duration
-        const defaultStart = 0.1;
-        const defaultEnd = 0.7;
-        setStartTrim(defaultStart);
-        setEndTrim(defaultEnd);
-        setTrimmerPosition(defaultStart);
+        // Initialize trim positions based on actual duration and mode
+        let finalStartTrim, finalEndTrim;
+        if (isRingtoneMode && audioBuffer.duration > 30) {
+          // Auto-select best 30-second segment for ringtones
+          const bestSegment = findBestRingtoneSegment(audioBuffer, 30);
+          finalStartTrim = bestSegment.start;
+          finalEndTrim = bestSegment.end;
+          setStartTrim(finalStartTrim);
+          setEndTrim(finalEndTrim);
+          setTrimmerPosition(finalStartTrim);
+          // Enable fade in/out by default for ringtones
+          setFadeInEnabled(true);
+          setFadeOutEnabled(true);
+          const fadeDuration = Math.min(1.5, (bestSegment.end - bestSegment.start) * audioBuffer.duration / 4);
+          setFadeInTime(fadeDuration);
+          setFadeOutTime(fadeDuration);
+          const startSeconds = bestSegment.start * audioBuffer.duration;
+          const endSeconds = bestSegment.end * audioBuffer.duration;
+          const startMins = Math.floor(startSeconds / 60);
+          const startSecs = (startSeconds % 60).toFixed(1);
+          const endMins = Math.floor(endSeconds / 60);
+          const endSecs = (endSeconds % 60).toFixed(1);
+          console.log('🎵 [RINGTONE] Auto-selected best 30-second segment:', {
+            start: bestSegment.start,
+            end: bestSegment.end,
+            startTime: `${startMins}:${startSecs.padStart(4, "0")}`,
+            endTime: `${endMins}:${endSecs.padStart(4, "0")}`,
+            fadeDuration
+          });
+        } else {
+          // Default trim positions for non-ringtone or short audio
+          finalStartTrim = 0.1;
+          finalEndTrim = isRingtoneMode && audioBuffer.duration <= 30 
+            ? 1.0 
+            : 0.7;
+          setStartTrim(finalStartTrim);
+          setEndTrim(finalEndTrim);
+          setTrimmerPosition(finalStartTrim);
+        }
         
         const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
         console.log('✅ [AUDIO LOAD] Audio loaded successfully!', {
           trackName: displayName,
           duration: audioBuffer.duration,
-          trimStart: defaultStart,
-          trimEnd: defaultEnd,
+          trimStart: finalStartTrim,
+          trimEnd: finalEndTrim,
           totalLoadTimeSeconds: totalTime,
           loadMethod: audioSource.isUploaded ? 'FileReader' : 'fetch'
         });
@@ -917,6 +1056,7 @@ export function AudioEditor() {
 
       const resolvedDownloadUrl = responsePayload.downloadUrl;
 
+      setDownloadUrl(resolvedDownloadUrl);
       setGenerationSuccess("Your audio download link is ready.");
 
       try {
@@ -1143,7 +1283,12 @@ export function AudioEditor() {
             className="format-dropdown"
             onClick={() => setShowFormatDropdown(!showFormatDropdown)}
           >
-            <span>Export as .{outputFormat}</span>
+            <span>
+              {isRingtoneMode 
+                ? (outputFormat === 'm4r' ? 'For iPhone' : 'For Android')
+                : `Export as .${outputFormat}`
+              }
+            </span>
             <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.292892 0.292894C0.683416 -0.0976306 1.31658 -0.0976315 1.70711 0.292892L7.00002 5.58579L12.2929 0.292894C12.6834 -0.0976306 13.3166 -0.0976315 13.7071 0.292892C14.0976 0.683416 14.0976 1.31658 13.7071 1.70711L7.70713 7.70711C7.51959 7.89464 7.26524 8 7.00002 8C6.7348 8 6.48045 7.89464 6.29291 7.70711L0.292894 1.70711C-0.0976306 1.31658 -0.0976315 0.683419 0.292892 0.292894Z" fill="currentColor"/>
             </svg>
@@ -1155,7 +1300,7 @@ export function AudioEditor() {
                 onClick={() => setShowFormatDropdown(false)}
               />
               <div className="format-dropdown-menu">
-                {OUTPUT_FORMAT_OPTIONS.map((option) => (
+                {(isRingtoneMode ? RINGTONE_FORMAT_OPTIONS : OUTPUT_FORMAT_OPTIONS).map((option) => (
                   <button
                     key={option.value}
                     onClick={() => handleFormatSelect(option.value)}
@@ -1433,7 +1578,28 @@ export function AudioEditor() {
         </button>
 
         {generationSuccess && (
-          <div className="generation-status success">{generationSuccess}</div>
+          <div className="generation-status success">
+            {downloadUrl ? (
+              <>
+                Your audio{" "}
+                <a
+                  href={downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: "underline", color: "inherit" }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  download link
+                </a>{" "}
+                is ready.
+              </>
+            ) : (
+              generationSuccess
+            )}
+          </div>
         )}
 
         {generationError && (

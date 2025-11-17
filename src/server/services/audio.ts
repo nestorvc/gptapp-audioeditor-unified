@@ -26,8 +26,10 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname, "../../..");
+const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname, "../..");
 dotenv.config({ path: path.join(projectRoot, ".env") });
+
+console.log("process.env.AWS_REGION", process.env.AWS_REGION);
 
 /* ----------------------------- IMPORTS ----------------------------- */
 import fs from "node:fs";
@@ -49,7 +51,7 @@ const s3Bucket = process.env.S3_BUCKET;
 const s3KeyPrefix = process.env.S3_KEY_PREFIX;
 const s3PublicBaseUrl = process.env.S3_PUBLIC_BASE_URL ?? "";
 const s3ObjectAcl = process.env.S3_OBJECT_ACL ?? undefined;
-export const AUDIO_EXPORT_FORMATS = ["mp3", "wav", "flac", "ogg", "m4a"] as const;
+export const AUDIO_EXPORT_FORMATS = ["mp3", "wav", "flac", "ogg", "m4a", "m4r"] as const;
 
 /* ----------------------------- TYPES ----------------------------- */
 type FfmpegCommand = ReturnType<typeof ffmpeg>;
@@ -125,6 +127,16 @@ const AUDIO_FORMAT_CONFIG: Record<AudioExportFormat, AudioFormatConfig> = {
         .format("mp4")
         .outputOptions(["-movflags", "+faststart", "-vn"]),
   },
+  m4r: {
+    extension: ".m4r",
+    mimeType: "audio/m4r",
+    apply: (command) =>
+      command
+        .audioCodec("aac")
+        .audioBitrate("192k")
+        .format("mp4")
+        .outputOptions(["-movflags", "+faststart", "-vn"]),
+  },
 };
 
 // sanitizeFileName - Sanitizes the file name
@@ -158,6 +170,53 @@ await new Promise<void>((resolve, reject) => {
     command.on("end", () => resolve());
     command.save(outputPath);
 });
+}
+
+// trimAudioWithFade - Trims audio and applies fade in/out effects
+async function trimAudioWithFade({
+  inputPath,
+  outputPath,
+  startTime,
+  duration,
+  fadeInDuration = 1.5,
+  fadeOutDuration = 1.5,
+  format,
+}: {
+  inputPath: string;
+  outputPath: string;
+  startTime: number;
+  duration: number;
+  fadeInDuration?: number;
+  fadeOutDuration?: number;
+  format: AudioExportFormat;
+}) {
+  return new Promise<void>((resolve, reject) => {
+    // Ensure fade durations don't exceed the audio duration
+    const safeFadeIn = Math.min(fadeInDuration, duration / 2);
+    const safeFadeOut = Math.min(fadeOutDuration, duration / 2);
+    const fadeOutStart = Math.max(0, duration - safeFadeOut);
+
+    const filters = [];
+    if (safeFadeIn > 0) {
+      filters.push(`afade=t=in:st=0:d=${safeFadeIn}`);
+    }
+    if (safeFadeOut > 0 && fadeOutStart > safeFadeIn) {
+      filters.push(`afade=t=out:st=${fadeOutStart}:d=${safeFadeOut}`);
+    }
+
+    let command = ffmpeg(inputPath)
+      .setStartTime(startTime)
+      .setDuration(duration);
+
+    if (filters.length > 0) {
+      command = command.audioFilters(filters);
+    }
+
+    command = configureCommand(command, format);
+    command.on("error", (error: unknown) => reject(error));
+    command.on("end", () => resolve());
+    command.save(outputPath);
+  });
 }
   
 // downloadAudioToTempFile - Downloads audio file to temporary directory
@@ -382,6 +441,154 @@ export async function convertRemoteAudioToFormat({
   } finally {
     await Promise.all(
       [downloadedFilePath, convertedFilePath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
+  }
+}
+
+// trimFirst30Seconds - Trims first 30 seconds with fade in/out
+export async function trimFirst30Seconds({
+  audioUrl,
+  format,
+  suggestedTrackName,
+  fadeDuration = 1.5,
+}: {
+  audioUrl: string;
+  format: AudioExportFormat;
+  suggestedTrackName?: string | null;
+  fadeDuration?: number;
+}): Promise<AudioExportResult> {
+  let downloadedFilePath: string | null = null;
+  let trimmedFilePath: string | null = null;
+
+  try {
+    const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
+    downloadedFilePath = filePath;
+
+    const trackNameBase = sanitizeFileName(
+      (suggestedTrackName ?? originalFileName ?? DEFAULT_TMP_PREFIX).replace(/\.[^/.]+$/, ""),
+      DEFAULT_TMP_PREFIX
+    );
+
+    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
+    trimmedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+
+    await trimAudioWithFade({
+      inputPath: downloadedFilePath,
+      outputPath: trimmedFilePath,
+      startTime: 0,
+      duration: 30,
+      fadeInDuration: fadeDuration,
+      fadeOutDuration: fadeDuration,
+      format,
+    });
+
+    const { downloadUrl, fileName } = await uploadAudioToS3({
+      filePath: trimmedFilePath,
+      mimeType,
+      downloadName: trackNameBase,
+      extension,
+      config: s3UploadConfig,
+    });
+
+    return {
+      downloadUrl,
+      fileName,
+      format,
+      trackName: trackNameBase,
+      extension,
+    };
+  } finally {
+    await Promise.all(
+      [downloadedFilePath, trimmedFilePath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
+  }
+}
+
+// trimLast30Seconds - Trims last 30 seconds with fade in/out
+export async function trimLast30Seconds({
+  audioUrl,
+  format,
+  suggestedTrackName,
+  fadeDuration = 1.5,
+}: {
+  audioUrl: string;
+  format: AudioExportFormat;
+  suggestedTrackName?: string | null;
+  fadeDuration?: number;
+}): Promise<AudioExportResult> {
+  let downloadedFilePath: string | null = null;
+  let trimmedFilePath: string | null = null;
+
+  try {
+    const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
+    downloadedFilePath = filePath;
+
+    // Get audio duration to calculate start time
+    const duration = await new Promise<number>((resolve, reject) => {
+      ffmpeg.ffprobe(filePath, (err, metadata) => {
+        if (err) reject(err);
+        else resolve(metadata.format.duration || 0);
+      });
+    });
+
+    if (duration < 30) {
+      throw new Error(`Audio is only ${duration.toFixed(1)} seconds long. Need at least 30 seconds to trim the last 30 seconds.`);
+    }
+
+    const trackNameBase = sanitizeFileName(
+      (suggestedTrackName ?? originalFileName ?? DEFAULT_TMP_PREFIX).replace(/\.[^/.]+$/, ""),
+      DEFAULT_TMP_PREFIX
+    );
+
+    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
+    trimmedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+
+    const startTime = duration - 30;
+
+    await trimAudioWithFade({
+      inputPath: downloadedFilePath,
+      outputPath: trimmedFilePath,
+      startTime,
+      duration: 30,
+      fadeInDuration: fadeDuration,
+      fadeOutDuration: fadeDuration,
+      format,
+    });
+
+    const { downloadUrl, fileName } = await uploadAudioToS3({
+      filePath: trimmedFilePath,
+      mimeType,
+      downloadName: trackNameBase,
+      extension,
+      config: s3UploadConfig,
+    });
+
+    return {
+      downloadUrl,
+      fileName,
+      format,
+      trackName: trackNameBase,
+      extension,
+    };
+  } finally {
+    await Promise.all(
+      [downloadedFilePath, trimmedFilePath].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);

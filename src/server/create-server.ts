@@ -20,11 +20,15 @@
  * 
  * MCP Tools:
  * - audio.open_audio_editor - Opens the audio editor widget
+ * - audio.open_ringtone_editor - Opens the ringtone editor widget (same UI, ringtone-specific format options)
  * - audio.convert_to_mp3 - Converts remote audio URL to MP3 format
  * - audio.convert_to_wav - Converts remote audio URL to WAV format
  * - audio.convert_to_flac - Converts remote audio URL to FLAC format
  * - audio.convert_to_ogg - Converts remote audio URL to OGG (Opus) format
  * - audio.convert_to_m4a - Converts remote audio URL to M4A (AAC) format
+ * - audio.convert_to_m4r - Converts remote audio URL to M4R (iOS ringtone) format
+ * - audio.trim_first_30_seconds - Trims first 30 seconds with fade in/out
+ * - audio.trim_last_30_seconds - Trims last 30 seconds with fade in/out
  * - audio.notify_download_link_ready - Notifies ChatGPT about audio download links
  * 
  * The widgets are loaded from the build/widgets directory and inlined as self-contained HTML
@@ -36,9 +40,11 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname, "../..");
+const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname, "..");
 dotenv.config({ path: path.join(projectRoot, ".env") });
 const apiBaseUrl = process.env.BASE_URL;
+
+console.log("process.env.BASE_URL", process.env.BASE_URL);
 
 /* ----------------------------- IMPORTS ----------------------------- */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -48,6 +54,8 @@ import fs from "node:fs";
 
 import {
   convertRemoteAudioToFormat,
+  trimFirst30Seconds,
+  trimLast30Seconds,
   AUDIO_EXPORT_FORMATS,
   type AudioExportFormat,
 } from "./services/audio.js";
@@ -172,6 +180,41 @@ export const createServer = () => {
         message: "Audio editor ready",
         defaultFormat: "mp3",
         formats: AUDIO_EXPORT_FORMATS,
+      },
+      _meta: {
+        hasAudioUrl: false,
+      },
+    }),
+  );
+
+  /* Ringtone Editor */
+  server.registerTool(
+    "audio.open_ringtone_editor",
+    {
+      title: "Open Ringtone Editor",
+      description:
+        "Use this when the user wants to create or edit a ringtone by trimming audio, adjusting fades, and exporting it.",
+      inputSchema: {},
+      _meta: {
+        "openai/outputTemplate": audioEditorUri,
+        "openai/toolInvocation/invoking": "Opening ringtone editor",
+        "openai/toolInvocation/invoked": "Ringtone editor displayed",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async () => ({
+      content: [
+        {
+          type: "text",
+          text: "Ringtone editor is ready! Trim your audio and export it as a ringtone.",
+        },
+      ],
+      structuredContent: {
+        audioUrl: null,
+        message: "Ringtone editor ready",
+        defaultFormat: "m4r",
+        formats: AUDIO_EXPORT_FORMATS,
+        mode: "ringtone",
       },
       _meta: {
         hasAudioUrl: false,
@@ -355,7 +398,7 @@ export const createServer = () => {
     toolName: "audio.convert_to_mp3",
     title: "Convert Audio to MP3 (.mp3)",
     description:
-      "Use this when a user provides a remote audio URL that should become a downloadable MP3 file. Do not use for ringtone-specific exports.",
+      "Use this when a user provides a remote audio URL that should become a downloadable MP3 file.",
     invoking: "Converting audio to MP3",
     invoked: "MP3 download ready",
   });
@@ -365,7 +408,7 @@ export const createServer = () => {
     toolName: "audio.convert_to_wav",
     title: "Convert Audio to WAV (.wav)",
     description:
-      "Use this when a user provides a remote audio URL that should become a downloadable uncompressed WAV file. Do not use for ringtone-specific exports.",
+      "Use this when a user provides a remote audio URL that should become a downloadable uncompressed WAV file.",
     invoking: "Converting audio to WAV",
     invoked: "WAV download ready",
   });
@@ -375,7 +418,7 @@ export const createServer = () => {
     toolName: "audio.convert_to_flac",
     title: "Convert Audio to FLAC (.flac)",
     description:
-      "Use this when a user provides a remote audio URL that should become a downloadable lossless FLAC file. Do not use for ringtone-specific exports.",
+      "Use this when a user provides a remote audio URL that should become a downloadable lossless FLAC file.",
     invoking: "Converting audio to FLAC",
     invoked: "FLAC download ready",
   });
@@ -385,7 +428,7 @@ export const createServer = () => {
     toolName: "audio.convert_to_ogg",
     title: "Convert Audio to OGG (.ogg)",
     description:
-      "Use this when a user provides a remote audio URL that should become a downloadable OGG (Opus) file. Do not use for ringtone-specific exports.",
+      "Use this when a user provides a remote audio URL that should become a downloadable OGG (Opus) file.",
     invoking: "Converting audio to OGG",
     invoked: "OGG download ready",
   });
@@ -395,10 +438,189 @@ export const createServer = () => {
     toolName: "audio.convert_to_m4a",
     title: "Convert Audio to M4A (.m4a)",
     description:
-      "Use this when a user provides a remote audio URL that should become a downloadable M4A (AAC) file. Do not use for ringtone-specific exports.",
+      "Use this when a user provides a remote audio URL that should become a downloadable M4A (AAC) file.",
     invoking: "Converting audio to M4A",
     invoked: "M4A download ready",
   });
+
+  registerAudioConversionTool({
+    format: "m4r",
+    toolName: "audio.convert_to_m4r",
+    title: "Convert Audio to M4R (.m4r)",
+    description:
+      "Use this when a user provides a remote audio URL that should become a downloadable M4R (iOS ringtone) file.",
+    invoking: "Converting audio to M4R",
+    invoked: "M4R download ready",
+  });
+
+  /* Trim Tools */
+  server.registerTool(
+    "audio.trim_start_of_audio",
+    {
+      title: "Trim Start of Audio",
+      description:
+        "Use this when a user wants to extract the start of an audio file. Automatically applies fade in and fade out effects.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio file. Example: https://cdn.example.com/audio/song.mp3",
+          ),
+        format: z
+          .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+          .optional()
+          .describe(`Target audio format. Supported options: ${AUDIO_EXPORT_FORMATS.join(", ")}. Defaults to mp3.`),
+        trackName: z
+          .string()
+          .max(80, "Track name must be 80 characters or fewer.")
+          .optional()
+          .describe("Optional display name for the exported file. Example: Intro_30s"),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Trimming first 30 seconds",
+        "openai/toolInvocation/invoked": "First 30 seconds trimmed and ready",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl, format, trackName } = z
+        .object({
+          audioUrl: z
+            .string()
+            .url("Provide a valid HTTPS URL to the source audio file.")
+            .describe(
+              "Public HTTPS URL of the audio file. Example: https://cdn.example.com/audio/song.mp3",
+            ),
+          format: z
+            .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+            .optional()
+            .describe(`Target audio format. Supported options: ${AUDIO_EXPORT_FORMATS.join(", ")}. Defaults to mp3.`),
+          trackName: z
+            .string()
+            .max(80, "Track name must be 80 characters or fewer.")
+            .optional()
+            .describe("Optional display name for the exported file. Example: Intro_30s"),
+        })
+        .parse(rawParams);
+
+      const result = await trimFirst30Seconds({
+        audioUrl,
+        format: format ?? "mp3",
+        suggestedTrackName: trackName ?? null,
+      });
+
+      console.log("[Audio Trim] Trimmed first 30 seconds via MCP tool", {
+        format: result.format,
+        fileName: result.fileName,
+        audioUrl,
+      });
+
+      await server.server.sendLoggingMessage({
+        level: "info",
+        data: `🎧 First 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `First 30 seconds trimmed (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioDownload" as const,
+          downloadUrl: result.downloadUrl,
+          fileName: result.fileName,
+          format: result.format,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
+    "audio.trim_end_of_audio",
+    {
+      title: "Trim End of Audio",
+      description:
+        "Use this when a user wants to extract the end of an audio file. Automatically applies fade in and fade out effects.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio file. Example: https://cdn.example.com/audio/song.mp3",
+          ),
+        format: z
+          .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+          .optional()
+          .describe(`Target audio format. Supported options: ${AUDIO_EXPORT_FORMATS.join(", ")}. Defaults to mp3.`),
+        trackName: z
+          .string()
+          .max(80, "Track name must be 80 characters or fewer.")
+          .optional()
+          .describe("Optional display name for the exported file. Example: Outro_30s"),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Trimming last 30 seconds",
+        "openai/toolInvocation/invoked": "Last 30 seconds trimmed and ready",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl, format, trackName } = z
+        .object({
+          audioUrl: z
+            .string()
+            .url("Provide a valid HTTPS URL to the source audio file.")
+            .describe(
+              "Public HTTPS URL of the audio file. Example: https://cdn.example.com/audio/song.mp3",
+            ),
+          format: z
+            .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+            .optional()
+            .describe(`Target audio format. Supported options: ${AUDIO_EXPORT_FORMATS.join(", ")}. Defaults to mp3.`),
+          trackName: z
+            .string()
+            .max(80, "Track name must be 80 characters or fewer.")
+            .optional()
+            .describe("Optional display name for the exported file. Example: Outro_30s"),
+        })
+        .parse(rawParams);
+
+      const result = await trimLast30Seconds({
+        audioUrl,
+        format: format ?? "mp3",
+        suggestedTrackName: trackName ?? null,
+      });
+
+      console.log("[Audio Trim] Trimmed last 30 seconds via MCP tool", {
+        format: result.format,
+        fileName: result.fileName,
+        audioUrl,
+      });
+
+      await server.server.sendLoggingMessage({
+        level: "info",
+        data: `🎧 Last 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Last 30 seconds trimmed (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioDownload" as const,
+          downloadUrl: result.downloadUrl,
+          fileName: result.fileName,
+          format: result.format,
+        },
+      };
+    },
+  );
 
   registerNotifyDownloadLinkTool({
     toolName: "audio.notify_download_link_ready",
