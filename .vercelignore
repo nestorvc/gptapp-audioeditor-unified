@@ -1,8 +1,6 @@
-# Development files (source code - not needed at runtime)
-src/
-
-# Note: Config files (tsconfig.json, vite.config.js, etc.) are needed for build
-# but are small and won't significantly impact deployment size
+# Note: src/ is needed for build step, so we can't exclude it here
+# Vercel will only bundle what's imported at runtime (build/index.js)
+# Config files are also needed for build but are small
 
 # Build artifacts (only include what's needed)
 build/**/*.map
