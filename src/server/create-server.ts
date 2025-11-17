@@ -40,7 +40,6 @@ const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname,
 dotenv.config({ path: path.join(projectRoot, ".env") });
 const apiBaseUrl = process.env.BASE_URL;
 
-
 /* ----------------------------- IMPORTS ----------------------------- */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";

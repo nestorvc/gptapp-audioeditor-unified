@@ -26,7 +26,7 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, "../../..");
+const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname, "../../..");
 dotenv.config({ path: path.join(projectRoot, ".env") });
 
 /* ----------------------------- IMPORTS ----------------------------- */
@@ -36,6 +36,10 @@ import ffmpeg from "fluent-ffmpeg";
 import { PutObjectCommand, type PutObjectCommandInput, S3Client } from "@aws-sdk/client-s3";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+
+/* ----------------------------- FFMPEG CONFIGURATION ----------------------------- */
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const DEFAULT_TMP_PREFIX = "audio";
