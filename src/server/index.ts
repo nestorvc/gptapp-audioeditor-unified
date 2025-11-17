@@ -28,7 +28,7 @@ const projectRoot = process.env.VERCEL ? process.cwd() : path.resolve(__dirname,
 dotenv.config({ path: path.join(projectRoot, ".env") });
 
 /* ----------------------------- IMPORTS ----------------------------- */
-import express, { Request, Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import multer from "multer";
 import fs from "node:fs";
@@ -101,7 +101,7 @@ async function handleAudioExport(req: Request, res: Response): Promise<void> {
 
 /* ----------------------------- EXPRESS APP ----------------------------- */
 // Initialize Express app
-const app = express();
+const app: Express = express();
 
 // Middleware setup
 app.use(express.json());
@@ -120,8 +120,49 @@ const transport = new StreamableHTTPServerTransport({
   sessionIdGenerator: undefined, // set to undefined for stateless servers
 });
 
-// MCP endpoint
+const { server } = createServer();
+
+// Server setup - initialize connection (lazy for Vercel, eager for local)
+let serverSetupPromise: Promise<void> | null = null;
+
+const setupServer = async () => {
+  if (serverSetupPromise) {
+    return serverSetupPromise;
+  }
+  
+  serverSetupPromise = (async () => {
+    try {
+      await server.connect(transport);
+      console.log("Server connected successfully");
+    } catch (error) {
+      console.error("Failed to set up the server:", error);
+      serverSetupPromise = null; // Reset on error so it can retry
+      throw error;
+    }
+  })();
+  
+  return serverSetupPromise;
+};
+
+// MCP endpoint - ensure server is initialized before handling requests
 app.post("/mcp", async (req: Request, res: Response) => {
+  try {
+    await setupServer();
+  } catch (error) {
+    console.error("Failed to initialize server:", error);
+    if (!res.headersSent) {
+      res.status(503).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Server initialization failed",
+        },
+        id: null,
+      });
+    }
+    return;
+  }
+  
   console.log("Received MCP request:", req.body);
   try {
     await transport.handleRequest(req, res, req.body);
@@ -158,46 +199,38 @@ app.delete("/mcp", methodNotAllowed);
 
 app.post("/api/audio-export", upload.single("audio"), handleAudioExport);
 
-const { server } = createServer();
+// Handle server shutdown (only for local development)
+if (!process.env.VERCEL) {
+  process.on("SIGINT", async () => {
+    console.log("Shutting down server...");
+    try {
+      console.log(`Closing transport`);
+      await transport.close();
+    } catch (error) {
+      console.error(`Error closing transport:`, error);
+    }
 
-// Server setup
-const setupServer = async () => {
-  try {
-    await server.connect(transport);
-    console.log("Server connected successfully");
-  } catch (error) {
-    console.error("Failed to set up the server:", error);
-    throw error;
-  }
-};
-
-// Start server
-setupServer()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`MCP Streamable HTTP Server listening on port ${PORT}`);
-    });
-  })
-  .catch((error) => {
-    console.error("Failed to start server:", error);
-    process.exit(1);
+    try {
+      await server.close();
+      console.log("Server shutdown complete");
+    } catch (error) {
+      console.error("Error closing server:", error);
+    }
+    process.exit(0);
   });
 
-// Handle server shutdown
-process.on("SIGINT", async () => {
-  console.log("Shutting down server...");
-  try {
-    console.log(`Closing transport`);
-    await transport.close();
-  } catch (error) {
-    console.error(`Error closing transport:`, error);
-  }
+  // Start server for local development
+  setupServer()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`MCP Streamable HTTP Server listening on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Failed to start server:", error);
+      process.exit(1);
+    });
+}
 
-  try {
-    await server.close();
-    console.log("Server shutdown complete");
-  } catch (error) {
-    console.error("Error closing server:", error);
-  }
-  process.exit(0);
-});
+// Export for Vercel serverless
+export default app;
