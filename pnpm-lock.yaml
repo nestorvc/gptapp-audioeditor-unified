@@ -35,12 +35,6 @@ importers:
       node-fetch:
         specifier: ^3.3.2
         version: 3.3.2
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.3.1
-        version: 18.3.1(react@18.3.1)
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -84,6 +78,12 @@ importers:
       postcss:
         specifier: ^8.5.6
         version: 8.5.6
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
       shx:
         specifier: ^0.3.4
         version: 0.3.4

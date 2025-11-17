@@ -1,0 +1,36 @@
+# Development files
+src/
+tsconfig.json
+vite.config.js
+tailwind.config.js
+postcss.config.js
+*.config.js
+
+# Build artifacts (only include what's needed)
+build/**/*.map
+build/**/*.d.ts
+
+# Development dependencies (exclude from deployment)
+node_modules/.pnpm/@types
+node_modules/.pnpm/typescript
+node_modules/.pnpm/vite
+node_modules/.pnpm/@vitejs
+node_modules/.pnpm/tailwindcss
+node_modules/.pnpm/postcss
+node_modules/.pnpm/autoprefixer
+node_modules/.pnpm/concurrently
+node_modules/.pnpm/nodemon
+node_modules/.pnpm/shx
+node_modules/.pnpm/react
+node_modules/.pnpm/react-dom
+
+# Source maps (optional - reduces size)
+*.map
+
+# Git and other
+.git
+.gitignore
+README.md
+.pnpm-store
+tmp/
+
