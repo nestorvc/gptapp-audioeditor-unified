@@ -139,10 +139,20 @@ const downsampleAudio = (channelData, originalSampleRate, targetSampleRate) => {
 
 // Calculate safe sample rate to keep file under size limit
 const calculateSafeSampleRate = (duration, numChannels, maxSizeMB = 4) => {
+  // Safety check
+  if (duration <= 0 || numChannels <= 0) {
+    return 44100; // Default fallback
+  }
+  
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
   const bytesPerSample = 2; // 16-bit
   const maxSamples = maxSizeBytes / (numChannels * bytesPerSample);
   const maxSampleRate = Math.floor(maxSamples / duration);
+  
+  // Handle edge cases (Infinity, NaN, or invalid values)
+  if (!isFinite(maxSampleRate) || maxSampleRate <= 0) {
+    return 44100; // Default fallback
+  }
   
   // Round down to common sample rates
   if (maxSampleRate >= 44100) return 44100;
@@ -1155,7 +1165,7 @@ export function AudioEditor() {
 
       try {
         await sendFollowUpMessage(
-          `Audio generated successfully! Download it here: ${resolvedDownloadUrl}\n`, `DO NOT REOPEN THE WIDGET AFTER SENDING THE MESSAGE`
+          `Audio generated successfully! Download it here: ${resolvedDownloadUrl}`
         );
         console.log("💬 [FOLLOW UP MESSAGE] Sent follow-up message with S3 download URL.");
       } catch (messageError) {
