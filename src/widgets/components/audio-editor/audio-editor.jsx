@@ -105,6 +105,53 @@ const prepareTrimmedAudioData = (audioBuffer, startTime, endTime, options) => {
   };
 };
 
+// Downsample audio data to reduce file size for upload
+// Target: keep files under 4MB to stay within Vercel's 4.5MB limit
+const downsampleAudio = (channelData, originalSampleRate, targetSampleRate) => {
+  if (originalSampleRate <= targetSampleRate) {
+    return { channelData, sampleRate: originalSampleRate };
+  }
+
+  const ratio = originalSampleRate / targetSampleRate;
+  const numChannels = channelData.length;
+  const originalFrameCount = channelData[0]?.length ?? 0;
+  const newFrameCount = Math.floor(originalFrameCount / ratio);
+  
+  const downsampledChannels = [];
+  
+  for (let channel = 0; channel < numChannels; channel += 1) {
+    const originalData = channelData[channel];
+    const downsampled = new Float32Array(newFrameCount);
+    
+    for (let i = 0; i < newFrameCount; i += 1) {
+      const sourceIndex = Math.floor(i * ratio);
+      downsampled[i] = originalData[sourceIndex];
+    }
+    
+    downsampledChannels.push(downsampled);
+  }
+  
+  return {
+    channelData: downsampledChannels,
+    sampleRate: targetSampleRate,
+  };
+};
+
+// Calculate safe sample rate to keep file under size limit
+const calculateSafeSampleRate = (duration, numChannels, maxSizeMB = 4) => {
+  const maxSizeBytes = maxSizeMB * 1024 * 1024;
+  const bytesPerSample = 2; // 16-bit
+  const maxSamples = maxSizeBytes / (numChannels * bytesPerSample);
+  const maxSampleRate = Math.floor(maxSamples / duration);
+  
+  // Round down to common sample rates
+  if (maxSampleRate >= 44100) return 44100;
+  if (maxSampleRate >= 32000) return 32000;
+  if (maxSampleRate >= 22050) return 22050;
+  if (maxSampleRate >= 16000) return 16000;
+  return 8000;
+};
+
 const encodeChannelDataToWav = (channelData, sampleRate) => {
   if (!channelData || channelData.length === 0) {
     throw new Error("No audio data to encode.");
@@ -1026,8 +1073,33 @@ export function AudioEditor() {
         fadeOutDuration: fadeOutTime,
       });
 
-      const wavBuffer = encodeChannelDataToWav(processed.channelData, processed.sampleRate);
+      // Calculate safe sample rate to keep file under 4MB (Vercel has 4.5MB limit)
+      const duration = selectedEnd - selectedStart;
+      const safeSampleRate = calculateSafeSampleRate(
+        duration,
+        processed.channelData.length,
+        4 // 4MB max (leaving 0.5MB safety margin)
+      );
+      
+      // Downsample if needed
+      const { channelData: finalChannelData, sampleRate: finalSampleRate } = 
+        downsampleAudio(processed.channelData, processed.sampleRate, safeSampleRate);
+
+      const wavBuffer = encodeChannelDataToWav(finalChannelData, finalSampleRate);
       const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
+      
+      // Log file size for debugging
+      const fileSizeMB = (wavBlob.size / (1024 * 1024)).toFixed(2);
+      console.log("📤 [AUDIO EXPORT] Preparing to upload:", {
+        duration: `${duration.toFixed(2)}s`,
+        originalSampleRate: processed.sampleRate,
+        finalSampleRate: finalSampleRate,
+        channels: finalChannelData.length,
+        fileSize: wavBlob.size,
+        fileSizeMB: fileSizeMB,
+        format: outputFormat,
+        downsampled: processed.sampleRate !== finalSampleRate,
+      });
 
       const formData = new FormData();
       formData.append("audio", wavBlob, "trimmed.wav");

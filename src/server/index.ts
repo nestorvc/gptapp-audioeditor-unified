@@ -66,9 +66,22 @@ async function handleAudioExport(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Log file size for debugging
+  console.log("[Audio Export] Received file:", {
+    size: file.size,
+    sizeMB: (file.size / (1024 * 1024)).toFixed(2),
+    originalName: file.originalname,
+    mimetype: file.mimetype,
+  });
+
   // Check file size before processing (additional safety check)
   const maxSize = 500 * 1024 * 1024; // 500MB
   if (file.size > maxSize) {
+    console.error("[Audio Export] File too large:", {
+      size: file.size,
+      sizeMB: (file.size / (1024 * 1024)).toFixed(2),
+      maxSizeMB: (maxSize / (1024 * 1024)).toFixed(2),
+    });
     res.status(413).json({ 
       error: "File too large. Maximum file size is 500MB. Please try a smaller file or compress your audio." 
     });
@@ -193,13 +206,36 @@ app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
   
   // Handle specific error types
   if (err instanceof multer.MulterError) {
+    console.error("[Audio Export] Multer error:", {
+      code: err.code,
+      field: err.field,
+      message: err.message,
+    });
     if (err.code === 'LIMIT_FILE_SIZE') {
       res.status(413).json({ 
-        error: "File too large. Maximum file size is 500MB. Please try a smaller file or compress your audio." 
+        error: "File too large. Maximum file size is 500MB. Please try trimming a shorter segment or selecting a smaller audio portion." 
       });
       return;
     }
   }
+  
+  // Handle 413 errors that might come from hosting platform (e.g., Vercel's 4.5MB limit)
+  if (err.status === 413 || err.statusCode === 413) {
+    console.error("[Audio Export] Request too large (likely hosting platform limit):", {
+      message: err.message,
+    });
+    res.status(413).json({ 
+      error: "Request too large. Please try trimming a shorter segment. The audio is being automatically downsampled, but very long clips may still exceed limits." 
+    });
+    return;
+  }
+  
+  // Log other errors for debugging
+  console.error("[Audio Export] Unexpected error:", {
+    message: err.message,
+    stack: err.stack,
+    status: err.status || err.statusCode,
+  });
   
   // Default error handler
   const status = err.status || err.statusCode || 500;
