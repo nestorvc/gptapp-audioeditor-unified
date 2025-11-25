@@ -54,7 +54,7 @@ if (!process.env.VERCEL) {
 const upload = multer({
   dest: TEMP_DIR,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: 500 * 1024 * 1024, // 500MB
   },
 });
 
@@ -63,6 +63,21 @@ async function handleAudioExport(req: Request, res: Response): Promise<void> {
   const file = req.file;
   if (!file) {
     res.status(400).json({ error: "Missing audio file" });
+    return;
+  }
+
+  // Check file size before processing (additional safety check)
+  const maxSize = 500 * 1024 * 1024; // 500MB
+  if (file.size > maxSize) {
+    res.status(413).json({ 
+      error: "File too large. Maximum file size is 500MB. Please try a smaller file or compress your audio." 
+    });
+    // Clean up the uploaded file
+    try {
+      await fs.promises.unlink(file.path);
+    } catch {
+      // ignore cleanup errors
+    }
     return;
   }
 
@@ -89,7 +104,8 @@ async function handleAudioExport(req: Request, res: Response): Promise<void> {
     });
   } catch (error) {
     console.error("Failed to export audio", error);
-    res.status(500).json({ error: "Failed to export audio" });
+    const errorMessage = error instanceof Error ? error.message : "Failed to export audio";
+    res.status(500).json({ error: errorMessage });
   } finally {
     try {
       await fs.promises.unlink(filePath);
@@ -157,6 +173,39 @@ app.get("/mcp", methodNotAllowed);
 app.delete("/mcp", methodNotAllowed);
 
 app.post("/api/audio-export", upload.single("audio"), handleAudioExport);
+
+// Error handling middleware to ensure CORS headers are always sent (must be after all routes)
+app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
+  // Set CORS headers manually even on errors
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Origin, Content-Type, Accept, *");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  
+  if (res.headersSent) {
+    return next(err);
+  }
+  
+  // Handle specific error types
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ 
+        error: "File too large. Maximum file size is 500MB. Please try a smaller file or compress your audio." 
+      });
+      return;
+    }
+  }
+  
+  // Default error handler
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal server error";
+  res.status(status).json({ error: message });
+});
 
 const { server } = createServer();
 

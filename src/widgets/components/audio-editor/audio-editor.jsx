@@ -1044,8 +1044,30 @@ export function AudioEditor() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Server failed to export audio.");
+        let errorMessage = "Server failed to export audio.";
+        try {
+          // Try to parse JSON error response
+          const errorData = await response.json();
+          if (errorData?.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // If JSON parsing fails, try to get text
+          try {
+            const errorText = await response.text();
+            if (errorText) {
+              errorMessage = errorText;
+            }
+          } catch {
+            // Fallback to status-based message
+            if (response.status === 413) {
+              errorMessage = "File too large. Maximum file size is 500MB. Please try trimming your audio or selecting a shorter segment.";
+            } else if (response.status >= 500) {
+              errorMessage = "Server error. Please try again later.";
+            }
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const responsePayload = await response.json();
@@ -1231,7 +1253,17 @@ export function AudioEditor() {
             </svg>
             <h2 className="upload-title">Upload Audio File</h2>
             <p className="upload-description">Choose an audio file to edit and export</p>
-            <label htmlFor="audio-file-input" className="upload-button">
+            <label 
+              htmlFor="audio-file-input" 
+              className="upload-button"
+              onClick={(e) => {
+                // Programmatically trigger file input for better mobile app compatibility
+                e.preventDefault();
+                if (fileInputRef.current) {
+                  fileInputRef.current.click();
+                }
+              }}
+            >
               Select File
             </label>
             <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
