@@ -118,6 +118,7 @@ export const createServer = () => {
       "https://*.oaistatic.com",
       "https://files.openai.com",
       "https://cdn.openai.com",
+      "https://*.blob.core.windows.net",
       process.env.CONNECT_DOMAIN,
     ],
     resource_domains: [
@@ -125,6 +126,7 @@ export const createServer = () => {
       "https://files.openai.com",
       "https://cdn.openai.com",
       "https://chatgpt.com",
+      "https://*.blob.core.windows.net",
     ],
   };
 
@@ -160,31 +162,57 @@ export const createServer = () => {
       title: "Open Audio Editor",
       description:
         "Use this when the user wants to trim, cut, fade, preview, or enhance an audio clip and export it to formats like MP3, WAV, FLAC, OGG, or M4A.",
-      inputSchema: {},
+      inputSchema: {
+        audioFile: z
+          .object({
+            download_url: z.string().url(),
+            file_id: z.string(),
+          })
+          .optional()
+          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
+      },
       _meta: {
         "openai/outputTemplate": audioEditorUri,
         "openai/toolInvocation/invoking": "Opening audio editor",
         "openai/toolInvocation/invoked": "Audio editor displayed",
+        "openai/fileParams": ["audioFile"],
       },
       annotations: { readOnlyHint: true },
     },
-    async () => ({
-      content: [
-        {
-          type: "text",
-          text: "Audio editor is ready! Trim sections, tweak fades, and export to your favorite format.",
+    async (rawParams) => {
+      const { audioFile } = z
+        .object({
+          audioFile: z
+            .object({
+              download_url: z.string().url(),
+              file_id: z.string(),
+            })
+            .optional(),
+        })
+        .parse(rawParams);
+
+      const audioUrl = audioFile?.download_url ?? null;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: audioUrl
+              ? "Audio editor is ready with your audio file! Trim sections, tweak fades, and export to your favorite format."
+              : "Audio editor is ready! Trim sections, tweak fades, and export to your favorite format.",
+          },
+        ],
+        structuredContent: {
+          audioUrl,
+          message: "Audio editor ready",
+          defaultFormat: "mp3",
+          formats: AUDIO_EXPORT_FORMATS,
         },
-      ],
-      structuredContent: {
-        audioUrl: null,
-        message: "Audio editor ready",
-        defaultFormat: "mp3",
-        formats: AUDIO_EXPORT_FORMATS,
-      },
-      _meta: {
-        hasAudioUrl: false,
-      },
-    }),
+        _meta: {
+          hasAudioUrl: !!audioUrl,
+        },
+      };
+    },
   );
 
   /* Ringtone Editor */
@@ -194,32 +222,58 @@ export const createServer = () => {
       title: "Open Ringtone Editor",
       description:
         "Use this when the user wants to create or edit a ringtone by trimming audio, adjusting fades, and exporting it.",
-      inputSchema: {},
+      inputSchema: {
+        audioFile: z
+          .object({
+            download_url: z.string().url(),
+            file_id: z.string(),
+          })
+          .optional()
+          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
+      },
       _meta: {
         "openai/outputTemplate": audioEditorUri,
         "openai/toolInvocation/invoking": "Opening ringtone editor",
         "openai/toolInvocation/invoked": "Ringtone editor displayed",
+        "openai/fileParams": ["audioFile"],
       },
       annotations: { readOnlyHint: true },
     },
-    async () => ({
-      content: [
-        {
-          type: "text",
-          text: "Ringtone editor is ready! Trim your audio and export it as a ringtone.",
+    async (rawParams) => {
+      const { audioFile } = z
+        .object({
+          audioFile: z
+            .object({
+              download_url: z.string().url(),
+              file_id: z.string(),
+            })
+            .optional(),
+        })
+        .parse(rawParams);
+
+      const audioUrl = audioFile?.download_url ?? null;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: audioUrl
+              ? "Ringtone editor is ready with your audio file! Trim your audio and export it as a ringtone."
+              : "Ringtone editor is ready! Trim your audio and export it as a ringtone.",
+          },
+        ],
+        structuredContent: {
+          audioUrl,
+          message: "Ringtone editor ready",
+          defaultFormat: "m4r",
+          formats: AUDIO_EXPORT_FORMATS,
+          mode: "ringtone",
         },
-      ],
-      structuredContent: {
-        audioUrl: null,
-        message: "Ringtone editor ready",
-        defaultFormat: "m4r",
-        formats: AUDIO_EXPORT_FORMATS,
-        mode: "ringtone",
-      },
-      _meta: {
-        hasAudioUrl: false,
-      },
-    }),
+        _meta: {
+          hasAudioUrl: !!audioUrl,
+        },
+      };
+    },
   );
 
   /* Notify Download Link Tools */

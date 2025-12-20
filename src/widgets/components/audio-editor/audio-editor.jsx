@@ -559,10 +559,20 @@ export function AudioEditor() {
 
   // Extract filename from audio file path
   const getFileName = (filePath) => {
-    const parts = filePath.split('/');
-    const fileName = parts[parts.length - 1];
+    // Remove query parameters first (e.g., Azure Blob Storage URLs)
+    const urlWithoutQuery = filePath.split('?')[0];
+    const parts = urlWithoutQuery.split('/');
+    let fileName = parts[parts.length - 1];
     // Remove file extension
-    return fileName.replace(/\.[^/.]+$/, "");
+    fileName = fileName.replace(/\.[^/.]+$/, "");
+    
+    // Check if filename looks meaningful (not a random ID or generic name)
+    // Return "Audio File" if filename starts with "file-" (common in blob storage) or is empty/too short
+    if (!fileName || fileName.length < 3 || fileName.startsWith('file-')) {
+      return "Audio File";
+    }
+    
+    return fileName;
   };
 
   const isChatConversationFileUrl = (value) =>
@@ -826,8 +836,8 @@ export function AudioEditor() {
           console.log('ℹ️ [AUDIO LOAD] Metadata extraction skipped:', e.message);
         }
         
-        // Use metadata title if available, otherwise use filename from source
-        const displayName = title || audioSource.name;
+        // Use metadata title if available, otherwise use filename from source, fallback to "Audio File"
+        const displayName = title || audioSource.name || "Audio File";
         console.log('✏️ [AUDIO LOAD] Setting track name:', {
           displayName,
           source: title ? 'metadata' : 'filename'
@@ -893,8 +903,8 @@ export function AudioEditor() {
           audioSource: audioSource.name
         });
         audioBufferRef.current = null;
-        // Fallback to filename if everything fails
-        const fallbackName = audioSource.name;
+        // Fallback to filename if everything fails, or "Audio File" if name is empty
+        const fallbackName = audioSource.name || "Audio File";
         console.log('🔄 [AUDIO LOAD] Using fallback name:', fallbackName);
         setTrackName(fallbackName);
         setIsLoading(false);
