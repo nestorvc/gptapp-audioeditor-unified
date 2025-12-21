@@ -1176,17 +1176,34 @@ export function AudioEditor() {
 
   // Audio playback management
   useEffect(() => {
-    if (!audioContextRef.current || !isPlaying) {
+    // Cleanup function to stop any ongoing playback
+    const cleanup = () => {
       if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
+        try {
+          sourceNodeRef.current.stop();
+        } catch (e) {
+          // Ignore errors if already stopped
+        }
         sourceNodeRef.current = null;
       }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      return;
+      if (gainNodeRef.current) {
+        gainNodeRef.current = null;
+      }
+      playbackStartTimeRef.current = null;
+    };
+
+    // If not playing or no audio context, cleanup and return
+    if (!audioContextRef.current || !isPlaying) {
+      cleanup();
+      return cleanup;
     }
+
+    // Cleanup previous playback before starting new one (handles trim changes during playback)
+    cleanup();
 
     const playAudio = async () => {
       try {
@@ -1283,10 +1300,14 @@ export function AudioEditor() {
       } catch (error) {
         console.error("Error playing audio:", error);
         setIsPlaying(false);
+        cleanup();
       }
     };
 
     playAudio();
+
+    // Return cleanup function to stop playback when effect re-runs (e.g., trim changes) or component unmounts
+    return cleanup;
   }, [isPlaying, selectedStart, selectedEnd, fadeInEnabled, fadeOutEnabled, fadeInTime, fadeOutTime, startTrim, endTrim, uploadedAudioUrl, toolOutput?.audioUrl]);
 
   // Cleanup on unmount
@@ -1705,7 +1726,7 @@ export function AudioEditor() {
             <p className="upload-description">
               {isDraggingOver ? 'Drop your audio file here' : (
                 <>
-                  <b>Drag and drop</b> 🫳 an audio file or <b>choose one</b> to edit and export
+                  <b>Drag-n-drop</b> an audio file or <b>choose one</b> to edit
                 </>
               )}
             </p>
