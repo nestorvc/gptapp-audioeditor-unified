@@ -114,19 +114,26 @@ export const createServer = () => {
   const audioEditorUri = "ui://widget/audio-editor.html";
   const cspMeta = {
     connect_domains: [
+      "https://*.oaiusercontent.com",
       "https://chatgpt.com",
       "https://*.oaistatic.com",
       "https://files.openai.com",
       "https://cdn.openai.com",
       "https://*.blob.core.windows.net",
+      "https://*.s3.*.amazonaws.com",
+      "https://*.s3.amazonaws.com",
       process.env.CONNECT_DOMAIN,
     ],
     resource_domains: [
+      "https://*.oaiusercontent.com",
       "https://*.oaistatic.com",
       "https://files.openai.com",
       "https://cdn.openai.com",
       "https://chatgpt.com",
       "https://*.blob.core.windows.net",
+      "https://*.s3.*.amazonaws.com",
+      "https://*.s3.amazonaws.com",
+      process.env.CONNECT_DOMAIN,
     ],
   };
 
