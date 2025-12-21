@@ -698,6 +698,22 @@ body {
   max-width: 400px;
   width: 100%;
   gap: var(--space-12);
+  padding: var(--space-24);
+  border-radius: 12px;
+  border: 2px dashed transparent;
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.upload-area.drag-over {
+  border-color: var(--blue);
+  background-color: rgba(59, 130, 246, 0.05);
+  transform: scale(1.02);
+}
+
+.upload-area.drag-over .upload-icon {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .upload-icon {

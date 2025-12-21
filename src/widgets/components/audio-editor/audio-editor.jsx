@@ -354,6 +354,7 @@ export function AudioEditor() {
   const [generationSuccess, setGenerationSuccess] = useState("");
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const sendFollowUpMessage = useSendFollowUpMessage();
 
   useEffect(() => {
@@ -464,10 +465,11 @@ export function AudioEditor() {
     return "";
   };
 
-  // Format marquee text with audio metadata
+  // Format marquee text with audio metadata only (never include track name/file name)
   const formatMarqueeText = () => {
     const parts = [];
     
+    // Only include technical metadata - never include trackName or file name
     if (audioSampleRate > 0) {
       parts.push(`Sample rate: ${formatSampleRate(audioSampleRate)}`);
     }
@@ -730,30 +732,18 @@ export function AudioEditor() {
     }
   }, [toolOutput?.audioUrl]);
 
-  // Handle file upload
-  const handleFileUpload = (event) => {
-    debugLog('📤 [FILE UPLOAD] File upload event triggered', {
+  // Process uploaded file (shared logic for both button click and drag & drop)
+  const processFile = (file, source = 'button') => {
+    debugLog(`📤 [FILE UPLOAD] File ${source} event triggered`, {
       timestamp: new Date().toISOString(),
-      filesCount: event.target.files?.length || 0
+      fileName: file.name,
+      fileSize: file.size
     });
 
     setUploadError(null);
 
-    const inputPath = event?.target?.value ?? "";
-    if (typeof inputPath === 'string' && inputPath.includes('/mnt/data/')) {
-      console.warn('⚠️ [FILE UPLOAD] File selected from ChatGPT conversation path. Rejecting to keep upload screen.', {
-        inputPath
-      });
-      setUploadError("Looks like that file was attached in the ChatGPT chat. Please upload the audio directly through this screen.");
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      return;
-    }
-
-    const file = event.target.files?.[0];
     if (!file) {
-      console.warn('⚠️ [FILE UPLOAD] No file selected');
+      console.warn('⚠️ [FILE UPLOAD] No file provided');
       return;
     }
 
@@ -761,10 +751,7 @@ export function AudioEditor() {
       console.warn('⚠️ [FILE UPLOAD] File path indicates ChatGPT conversation storage. Rejecting upload.', {
         filePath: file.path
       });
-      setUploadError("Files attached in the ChatGPT chat can’t be loaded. Please choose the audio file using this uploader.");
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      setUploadError("Files attached in the ChatGPT chat can't be loaded. Please choose the audio file using this uploader.");
       return;
     }
 
@@ -795,7 +782,7 @@ export function AudioEditor() {
         validTypes: validAudioTypes,
         validExtensions
       });
-      alert('Please upload a valid audio file (MP3, WAV, M4A, AAC, OGG, or WebM)');
+      setUploadError('Please upload a valid audio file (MP3, WAV, M4A, AAC, OGG, or WebM)');
       return;
     }
 
@@ -816,6 +803,52 @@ export function AudioEditor() {
     // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  // Handle file upload from input button
+  const handleFileUpload = (event) => {
+    const inputPath = event?.target?.value ?? "";
+    if (typeof inputPath === 'string' && inputPath.includes('/mnt/data/')) {
+      console.warn('⚠️ [FILE UPLOAD] File selected from ChatGPT conversation path. Rejecting to keep upload screen.', {
+        inputPath
+      });
+      setUploadError("Looks like that file was attached in the ChatGPT chat. Please upload the audio directly through this screen.");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    processFile(file, 'button');
+  };
+
+  // Handle drag and drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFile(files[0], 'drag-drop');
     }
   };
 
@@ -1561,13 +1594,20 @@ export function AudioEditor() {
             style={{ display: 'none' }}
             aria-label="Upload audio file"
           />
-          <div className="upload-area">
+          <div 
+            className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <svg className="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3"/>
               <path d="M32 20V44M20 32L32 20L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             <h2 className="upload-title">Upload Audio File</h2>
-            <p className="upload-description">Choose an audio file to edit and export</p>
+            <p className="upload-description">
+              {isDraggingOver ? 'Drop your audio file here' : 'Drag and drop an audio file or choose one to edit and export'}
+            </p>
             <label 
               htmlFor="audio-file-input" 
               className="upload-button"
