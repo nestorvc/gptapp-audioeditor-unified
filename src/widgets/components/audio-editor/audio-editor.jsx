@@ -355,6 +355,7 @@ export function AudioEditor() {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [showInitialLoading, setShowInitialLoading] = useState(true);
   const sendFollowUpMessage = useSendFollowUpMessage();
 
   useEffect(() => {
@@ -851,6 +852,28 @@ export function AudioEditor() {
       processFile(files[0], 'drag-drop');
     }
   };
+
+  // Handle initial loading overlay fade out
+  useEffect(() => {
+    const audioSource = getAudioSource();
+    
+    if (!audioSource) {
+      // No audio source - fade out loading overlay after a short delay
+      const timer = setTimeout(() => {
+        setShowInitialLoading(false);
+      }, 300); // Small delay for smooth transition
+      return () => clearTimeout(timer);
+    } else {
+      // Audio source exists - fade out only when audio is fully loaded
+      if (!isLoading) {
+        // Audio has finished loading, fade out the overlay
+        const timer = setTimeout(() => {
+          setShowInitialLoading(false);
+        }, 200); // Small delay for smooth transition
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isLoading, toolOutput?.audioUrl, uploadedAudioUrl]);
 
   // Load and analyze audio
   useEffect(() => {
@@ -1584,7 +1607,15 @@ export function AudioEditor() {
   if (!audioSource) {
     return (
       <div className="ringtone-editor">
-        <div className="upload-container">
+        {showInitialLoading && (
+          <div className={`loading-overlay ${!showInitialLoading ? 'fade-out' : ''}`}>
+            <div className="loading-content">
+              <div className="loading-spinner-large"></div>
+              <p className="loading-text">Loading...</p>
+            </div>
+          </div>
+        )}
+        <div className={`upload-container ${showInitialLoading ? 'hidden' : ''}`}>
           <input
             ref={fileInputRef}
             id="audio-file-input"
@@ -1635,8 +1666,17 @@ export function AudioEditor() {
 
   return (
     <div className="ringtone-editor">
-      {/* Header */}
-      <div className="ringtone-header">
+      {showInitialLoading && (
+        <div className={`loading-overlay ${!showInitialLoading ? 'fade-out' : ''}`}>
+          <div className="loading-content">
+            <div className="loading-spinner-large"></div>
+            <p className="loading-text">Loading...</p>
+          </div>
+        </div>
+      )}
+      <div className={`editor-content ${showInitialLoading ? 'hidden' : ''}`}>
+        {/* Header */}
+        <div className="ringtone-header">
         <button
           onClick={handlePlay}
           disabled={isLoading}
@@ -1994,6 +2034,7 @@ export function AudioEditor() {
             {generationError}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
