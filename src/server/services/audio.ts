@@ -838,3 +838,228 @@ export async function processAudioFromFile({
     }
   }
 }
+
+// separateVoiceFromMusic - Separates vocals from music using LALAL.AI API
+export async function separateVoiceFromMusic({
+  audioUrl,
+  suggestedTrackName,
+}: {
+  audioUrl: string;
+  suggestedTrackName?: string | null;
+}): Promise<{
+  vocalsUrl: string;
+  vocalsFileName: string;
+  musicUrl: string;
+  musicFileName: string;
+  trackName: string;
+}> {
+  const lalalaiKey = process.env.LALALAI_KEY;
+  if (!lalalaiKey) {
+    throw new Error("LALALAI_KEY environment variable is not set.");
+  }
+
+  let downloadedFilePath: string | null = null;
+  let vocalsFilePath: string | null = null;
+  let musicFilePath: string | null = null;
+
+  try {
+    // Download audio file
+    const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
+    downloadedFilePath = filePath;
+
+    const trackNameBase = sanitizeFileName(
+      (suggestedTrackName ?? originalFileName ?? DEFAULT_TMP_PREFIX).replace(/\.[^/.]+$/, ""),
+      DEFAULT_TMP_PREFIX
+    );
+
+    // Extract file extension from original filename
+    const originalExtension = originalFileName.match(/\.[^.]+$/)?.[0] || ".mp3";
+    const fileName = path.basename(filePath);
+
+    // Upload to LALAL.AI
+    const uploadResponse = await fetch("https://www.lalal.ai/api/upload/", {
+      method: "POST",
+      headers: {
+        "Authorization": `license ${lalalaiKey}`,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+      },
+      body: await fs.promises.readFile(filePath),
+    });
+
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json().catch(() => ({}));
+      throw new Error(`LALAL.AI upload failed: ${errorData.error || uploadResponse.statusText}`);
+    }
+
+    const uploadData = await uploadResponse.json();
+    if (uploadData.status !== "success") {
+      throw new Error(`LALAL.AI upload failed: ${uploadData.error || "Unknown error"}`);
+    }
+
+    const fileId = uploadData.id;
+
+    // Submit split request
+    const splitResponse = await fetch("https://www.lalal.ai/api/split/", {
+      method: "POST",
+      headers: {
+        "Authorization": `license ${lalalaiKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        params: JSON.stringify([{
+          id: fileId,
+          stem: "vocals",
+        }]),
+      }),
+    });
+
+    if (!splitResponse.ok) {
+      const errorData = await splitResponse.json().catch(() => ({}));
+      throw new Error(`LALAL.AI split request failed: ${errorData.error || splitResponse.statusText}`);
+    }
+
+    const splitData = await splitResponse.json();
+    if (splitData.status !== "success") {
+      throw new Error(`LALAL.AI split request failed: ${splitData.error || "Unknown error"}`);
+    }
+
+    // Poll for completion
+    const maxAttempts = 100;
+    const pollInterval = 3000; // 3 seconds
+    let attempts = 0;
+    let checkData: any = null;
+
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      const checkResponse = await fetch("https://www.lalal.ai/api/check/", {
+        method: "POST",
+        headers: {
+          "Authorization": `license ${lalalaiKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          id: fileId,
+        }),
+      });
+
+      if (!checkResponse.ok) {
+        throw new Error(`LALAL.AI check request failed: ${checkResponse.statusText}`);
+      }
+
+      checkData = await checkResponse.json();
+      if (checkData.status !== "success") {
+        throw new Error(`LALAL.AI check request failed: ${checkData.error || "Unknown error"}`);
+      }
+
+      const fileResult = checkData.result[fileId];
+      if (!fileResult) {
+        throw new Error("LALAL.AI: File result not found in check response");
+      }
+
+      if (fileResult.status === "error") {
+        throw new Error(`LALAL.AI processing error: ${fileResult.error || "Unknown error"}`);
+      }
+
+      const task = fileResult.task;
+      if (task?.state === "success" && fileResult.split) {
+        // Processing complete
+        break;
+      } else if (task?.state === "error") {
+        throw new Error(`LALAL.AI processing error: ${task.error || "Unknown error"}`);
+      } else if (task?.state === "cancelled") {
+        throw new Error("LALAL.AI processing was cancelled");
+      }
+
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      throw new Error("LALAL.AI processing timed out after 5 minutes");
+    }
+
+    const fileResult = checkData.result[fileId];
+    const splitResult = fileResult.split;
+
+    if (!splitResult || !splitResult.stem_track || !splitResult.back_track) {
+      throw new Error("LALAL.AI: Split result missing required tracks");
+    }
+
+    // Download both tracks
+    const vocalsResponse = await fetch(splitResult.stem_track);
+    if (!vocalsResponse.ok || !vocalsResponse.body) {
+      throw new Error(`Failed to download vocals track. HTTP status ${vocalsResponse.status}`);
+    }
+
+    const musicResponse = await fetch(splitResult.back_track);
+    if (!musicResponse.ok || !musicResponse.body) {
+      throw new Error(`Failed to download music track. HTTP status ${musicResponse.status}`);
+    }
+
+    vocalsFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-vocals${originalExtension}`);
+    musicFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-music${originalExtension}`);
+
+    const vocalsReadable = Readable.fromWeb(vocalsResponse.body as any);
+    await pipeline(vocalsReadable, fs.createWriteStream(vocalsFilePath));
+
+    const musicReadable = Readable.fromWeb(musicResponse.body as any);
+    await pipeline(musicReadable, fs.createWriteStream(musicFilePath));
+
+    // Determine MIME type from extension
+    const getMimeType = (ext: string): string => {
+      const mimeMap: Record<string, string> = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".m4a": "audio/m4a",
+        ".m4r": "audio/m4r",
+      };
+      return mimeMap[ext.toLowerCase()] || "audio/mpeg";
+    };
+
+    const mimeType = getMimeType(originalExtension);
+
+    // Upload both tracks to S3
+    const vocalsBaseName = `${trackNameBase}_vocals`;
+    const musicBaseName = `${trackNameBase}_music`;
+
+    const [vocalsUpload, musicUpload] = await Promise.all([
+      uploadAudioToS3({
+        filePath: vocalsFilePath,
+        mimeType,
+        downloadName: vocalsBaseName,
+        extension: originalExtension,
+        config: s3UploadConfig,
+      }),
+      uploadAudioToS3({
+        filePath: musicFilePath,
+        mimeType,
+        downloadName: musicBaseName,
+        extension: originalExtension,
+        config: s3UploadConfig,
+      }),
+    ]);
+
+    return {
+      vocalsUrl: vocalsUpload.downloadUrl,
+      vocalsFileName: vocalsUpload.fileName,
+      musicUrl: musicUpload.downloadUrl,
+      musicFileName: musicUpload.fileName,
+      trackName: trackNameBase,
+    };
+  } finally {
+    // Clean up temp files
+    await Promise.all(
+      [downloadedFilePath, vocalsFilePath, musicFilePath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
+  }
+}

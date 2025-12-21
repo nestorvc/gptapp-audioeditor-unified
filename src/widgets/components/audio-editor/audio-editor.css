@@ -94,6 +94,40 @@ body {
   transform: scale(1);
 }
 
+.upload-replace-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--gray);
+  color: var(--text-primary);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.upload-replace-button:hover {
+  background: var(--background-hover);
+  opacity: 0.9;
+}
+
+.upload-replace-button:active {
+  background: var(--background-active);
+}
+
+.upload-replace-button:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.upload-replace-icon {
+  color: var(--text-primary);
+  opacity: 0.8;
+}
+
 .loading-spinner {
   font-size: 12px;
   animation: pulse 1.5s ease-in-out infinite;
@@ -130,7 +164,7 @@ body {
   align-items: center;
   background: var(--black);
   color: var(--white);
-  padding: 8px 14px;
+  padding: 9px 14px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -711,11 +745,11 @@ body {
   justify-content: center;
   text-align: center;
   width: 100%;
-  padding: var(--space-24);
+  height: 100%;
   border-radius: 12px;
   border: 2px dashed var(--border-subtle);
   transition: all 0.2s ease;
-  cursor: default;
+  cursor: pointer;
 }
 
 .upload-area.drag-over {
@@ -737,8 +771,10 @@ body {
 
 .upload-title-container {
   display: flex;
+  justify-content: center;
   align-items: center;
   gap: var(--space-6);
+  width: 100%;
 }
 
 .upload-title {
@@ -752,6 +788,9 @@ body {
   color: var(--text-primary);
   flex-shrink: 0;
   opacity: 0.8;
+  border: 1px solid var(--text-primary);
+  border-radius: 8px;
+  padding: 4px;
 }
 
 .upload-description {

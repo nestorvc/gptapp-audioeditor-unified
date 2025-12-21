@@ -1704,13 +1704,11 @@ export function AudioEditor() {
       <div className="ringtone-editor">
         {/* Header */}
         <div className="ringtone-header">
-          <div className="upload-title-container">
-            <h2 className="upload-title">Upload Audio File</h2>
-            <svg className="upload-title-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M2 14V6C2 5.44772 2.44772 5 3 5H5C5.55228 5 6 5.44772 6 6V14C6 14.5523 5.55228 15 5 15H3C2.44772 15 2 14.5523 2 14Z" fill="currentColor"/>
-              <path d="M7 10V8C7 7.44772 7.44772 7 8 7H10C10.5523 7 11 7.44772 11 8V10C11 10.5523 10.5523 11 10 11H8C7.44772 11 7 10.5523 7 10Z" fill="currentColor"/>
-              <path d="M12 12V6C12 5.44772 12.4477 5 13 5H15C15.5523 5 16 5.44772 16 6V12C16 12.5523 15.5523 13 15 13H13C12.4477 13 12 12.5523 12 12Z" fill="currentColor"/>
+          <div className="upload-title-container">            
+            <svg className="upload-title-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 5C8.55228 5 9 5.44772 9 6V18C9 18.5523 8.55228 19 8 19C7.44772 19 7 18.5523 7 18V6C7 5.44772 7.44772 5 8 5ZM16 7C16.5523 7 17 7.44772 17 8V16C17 16.5523 16.5523 17 16 17C15.4477 17 15 16.5523 15 16V8C15 7.44772 15.4477 7 16 7ZM12 8.5C12.5523 8.5 13 8.94772 13 9.5V14.5C13 15.0523 12.5523 15.5 12 15.5C11.4477 15.5 11 15.0523 11 14.5V9.5C11 8.94772 11.4477 8.5 12 8.5ZM4 9.5C4.55228 9.5 5 9.94772 5 10.5V13.5C5 14.0523 4.55228 14.5 4 14.5C3.44772 14.5 3 14.0523 3 13.5V10.5C3 9.94772 3.44772 9.5 4 9.5ZM20 9.5C20.5523 9.5 21 9.94772 21 10.5V13.5C21 14.0523 20.5523 14.5 20 14.5C19.4477 14.5 19 14.0523 19 13.5V10.5C19 9.94772 19.4477 9.5 20 9.5Z" fill="currentColor"/>
             </svg>
+            <h2 className="upload-title">Upload Audio File</h2>
           </div>
         </div>
         
@@ -1730,6 +1728,22 @@ export function AudioEditor() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            onClick={(e) => {
+              e.preventDefault();
+              if (fileInputRef.current) {
+                fileInputRef.current.click();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (fileInputRef.current) {
+                  fileInputRef.current.click();
+                }
+              }
+            }}
           >            
             <p className="upload-description">
               {isDraggingOver ? 'Drop your audio file here' : (
@@ -1767,6 +1781,15 @@ export function AudioEditor() {
 
   return (
     <div className="ringtone-editor">
+      <input
+        ref={fileInputRef}
+        id="audio-file-input-replace"
+        type="file"
+        accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+        aria-label="Replace audio file"
+      />
       {/* Header */}
       <div className="ringtone-header">
         <button
@@ -1796,6 +1819,22 @@ export function AudioEditor() {
             <span>{duplicatedText || formatMarqueeText() || "Loading..."}</span>
           </div>
         </div>
+
+        <button
+          className="upload-replace-button"
+          onClick={(e) => {
+            e.preventDefault();
+            if (fileInputRef.current) {
+              fileInputRef.current.click();
+            }
+          }}
+          aria-label="Replace audio file"
+          title="Replace audio file"
+        >
+          <svg className="upload-replace-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 5C8.55228 5 9 5.44772 9 6V18C9 18.5523 8.55228 19 8 19C7.44772 19 7 18.5523 7 18V6C7 5.44772 7.44772 5 8 5ZM16 7C16.5523 7 17 7.44772 17 8V16C17 16.5523 16.5523 17 16 17C15.4477 17 15 16.5523 15 16V8C15 7.44772 15.4477 7 16 7ZM12 8.5C12.5523 8.5 13 8.94772 13 9.5V14.5C13 15.0523 12.5523 15.5 12 15.5C11.4477 15.5 11 15.0523 11 14.5V9.5C11 8.94772 11.4477 8.5 12 8.5ZM4 9.5C4.55228 9.5 5 9.94772 5 10.5V13.5C5 14.0523 4.55228 14.5 4 14.5C3.44772 14.5 3 14.0523 3 13.5V10.5C3 9.94772 3.44772 9.5 4 9.5ZM20 9.5C20.5523 9.5 21 9.94772 21 10.5V13.5C21 14.0523 20.5523 14.5 20 14.5C19.4477 14.5 19 14.0523 19 13.5V10.5C19 9.94772 19.4477 9.5 20 9.5Z" fill="currentColor"/>
+          </svg>
+        </button>
 
         <div className="format-dropdown-container">
           <button

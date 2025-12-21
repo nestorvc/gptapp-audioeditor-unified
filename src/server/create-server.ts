@@ -56,6 +56,7 @@ import {
   convertRemoteAudioToFormat,
   trimFirst30Seconds,
   trimLast30Seconds,
+  separateVoiceFromMusic,
   AUDIO_EXPORT_FORMATS,
   type AudioExportFormat,
 } from "./services/audio.js";
@@ -705,6 +706,89 @@ export const createServer = () => {
           downloadUrl: result.downloadUrl,
           fileName: result.fileName,
           format: result.format,
+        },
+      };
+    },
+  );
+
+  /* Voice/Music Separation Tool */
+  server.registerTool(
+    "audio.separate_voice_from_music",
+    {
+      title: "Separate Voice from Music",
+      description:
+        "Separates vocals from music in an audio file, returning two separate tracks: one with vocals and one with instrumental music.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio file to separate. Example: https://cdn.example.com/audio/song.mp3",
+          ),
+        trackName: z
+          .string()
+          .max(80, "Track name must be 80 characters or fewer.")
+          .optional()
+          .describe("Optional display name for the output files. Example: My_Song"),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Separating vocals from music",
+        "openai/toolInvocation/invoked": "Voice and music tracks separated",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl, trackName } = z
+        .object({
+          audioUrl: z
+            .string()
+            .url("Provide a valid HTTPS URL to the source audio file.")
+            .describe(
+              "Public HTTPS URL of the audio file to separate. Example: https://cdn.example.com/audio/song.mp3",
+            ),
+          trackName: z
+            .string()
+            .max(80, "Track name must be 80 characters or fewer.")
+            .optional()
+            .describe("Optional display name for the output files. Example: My_Song"),
+        })
+        .parse(rawParams);
+
+      const result = await separateVoiceFromMusic({
+        audioUrl,
+        suggestedTrackName: trackName ?? null,
+      });
+
+      console.log("[Voice Separation] Separated via MCP tool", {
+        trackName: result.trackName,
+        vocalsFileName: result.vocalsFileName,
+        musicFileName: result.musicFileName,
+        audioUrl,
+      });
+
+      await server.server.sendLoggingMessage({
+        level: "info",
+        data: `🎤 Voice separation complete: ${result.trackName}\nVocals: ${result.vocalsFileName}\nMusic: ${result.musicFileName}`,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Voice and music separated successfully!\n\nVocals: ${result.vocalsFileName}\nDownload: ${result.vocalsUrl}\n\nMusic: ${result.musicFileName}\nDownload: ${result.musicUrl}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioSeparation" as const,
+          vocals: {
+            downloadUrl: result.vocalsUrl,
+            fileName: result.vocalsFileName,
+          },
+          music: {
+            downloadUrl: result.musicUrl,
+            fileName: result.musicFileName,
+          },
+          trackName: result.trackName,
         },
       };
     },
