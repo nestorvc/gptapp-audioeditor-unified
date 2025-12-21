@@ -355,7 +355,6 @@ export function AudioEditor() {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [showInitialLoading, setShowInitialLoading] = useState(true);
   const sendFollowUpMessage = useSendFollowUpMessage();
 
   useEffect(() => {
@@ -852,38 +851,6 @@ export function AudioEditor() {
       processFile(files[0], 'drag-drop');
     }
   };
-
-  // Handle initial loading overlay fade out
-  useEffect(() => {
-    const audioSource = getAudioSource();
-    const hasChatGptAudio = toolOutput?.audioUrl && !isChatConversationFileUrl(toolOutput.audioUrl);
-    
-    // If ChatGPT provided audio, always wait for it to load before fading out
-    if (hasChatGptAudio) {
-      // Audio from ChatGPT - fade out only when audio is fully loaded
-      if (!isLoading) {
-        // Audio has finished loading, fade out the overlay
-        const timer = setTimeout(() => {
-          setShowInitialLoading(false);
-        }, 200); // Small delay for smooth transition
-        return () => clearTimeout(timer);
-      }
-    } else if (!audioSource) {
-      // No audio source at all - fade out loading overlay after a short delay
-      const timer = setTimeout(() => {
-        setShowInitialLoading(false);
-      }, 300); // Small delay for smooth transition
-      return () => clearTimeout(timer);
-    } else {
-      // User uploaded file - fade out when loaded
-      if (!isLoading) {
-        const timer = setTimeout(() => {
-          setShowInitialLoading(false);
-        }, 200);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isLoading, toolOutput?.audioUrl, uploadedAudioUrl]);
 
   // Load and analyze audio
   useEffect(() => {
@@ -1482,7 +1449,7 @@ export function AudioEditor() {
     } finally {
       setTimeout(() => {
         setIsGenerating(false);
-      }, 5000);
+      }, 2000);
     }
   };
 
@@ -1610,24 +1577,14 @@ export function AudioEditor() {
       };
     }
   }, [isDraggingStart, isDraggingEnd, isDraggingTrimmer]);
-
-  const audioSource = getAudioSource();
   const hasChatGptAudio = toolOutput?.audioUrl && !isChatConversationFileUrl(toolOutput.audioUrl);
 
   // Show upload UI ONLY if no audio source is available AND no ChatGPT audio URL exists
   // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
-  if (!audioSource && !hasChatGptAudio) {
+  if (!hasChatGptAudio) {
     return (
       <div className="ringtone-editor">
-        {showInitialLoading && (
-          <div className={`loading-overlay ${!showInitialLoading ? 'fade-out' : ''}`}>
-            <div className="loading-content">
-              <div className="loading-spinner-large"></div>
-              <p className="loading-text">Loading...</p>
-            </div>
-          </div>
-        )}
-        <div className={`upload-container ${showInitialLoading ? 'hidden' : ''}`}>
+        <div className="upload-container">
           <input
             ref={fileInputRef}
             id="audio-file-input"
@@ -1678,15 +1635,7 @@ export function AudioEditor() {
 
   return (
     <div className="ringtone-editor">
-      {showInitialLoading && (
-        <div className={`loading-overlay ${!showInitialLoading ? 'fade-out' : ''}`}>
-          <div className="loading-content">
-            <div className="loading-spinner-large"></div>
-            <p className="loading-text">Loading...</p>
-          </div>
-        </div>
-      )}
-      <div className={`editor-content ${showInitialLoading ? 'hidden' : ''}`}>
+      <div className="editor-content">
         {/* Header */}
         <div className="ringtone-header">
         <button
