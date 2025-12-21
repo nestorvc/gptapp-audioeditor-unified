@@ -44,7 +44,7 @@ export function initGA4(id) {
 
     gtag('js', new Date());
     gtag('config', id, {
-      send_page_view: false, // We're in an iframe, don't send page views
+      send_page_view: true,
     });
 
     gtagLoaded = true;
@@ -85,6 +85,7 @@ export function getSessionId() {
 export function trackEvent(eventName, parameters = {}) {
   if (!isInitialized || !window.gtag) {
     // Silently fail if GA4 is not initialized (graceful degradation)
+    console.warn('[Analytics] GA4 not initialized. Event not tracked:', eventName);
     return;
   }
 
@@ -102,6 +103,7 @@ export function trackEvent(eventName, parameters = {}) {
 
   try {
     window.gtag('event', eventName, eventParams);
+    console.log('[Analytics] Event tracked:', eventName, eventParams);
   } catch (error) {
     console.warn('[Analytics] Error tracking event:', error);
   }
