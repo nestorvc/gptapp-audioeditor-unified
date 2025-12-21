@@ -254,7 +254,7 @@ async function downloadAudioToTempFile(audioUrl: string) {
 }
 
 // normalizeAudioExportFormat - Validates and normalizes format strings
-function normalizeAudioExportFormat(value: string | undefined | null): AudioExportFormat {
+export function normalizeAudioExportFormat(value: string | undefined | null): AudioExportFormat {
   if (!value) {
     return "mp3";
   }

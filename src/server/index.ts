@@ -34,7 +34,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./create-server.js";
-import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl } from "./services/audio.js";
+import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat } from "./services/audio.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const PORT = process.env.PORT || 8000;
@@ -236,7 +236,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
 
       result = await processAudioFromUrl({
         audioUrl: audioUrl as string,
-        format: format as string,
+        format: normalizeAudioExportFormat(format as string),
         trackName: (trackName as string) || "audio",
         startTime: parseFloat(startTime as string),
         duration: parseFloat(duration as string),
@@ -261,7 +261,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
 
       result = await processAudioFromFile({
         filePath: file.path,
-        format: format as string,
+        format: normalizeAudioExportFormat(format as string),
         trackName: (trackName as string) || file.originalname || "audio",
         startTime: parseFloat(startTime as string),
         duration: parseFloat(duration as string),
