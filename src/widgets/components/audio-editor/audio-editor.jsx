@@ -10,6 +10,17 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./audio-editor.css";
 import { useToolOutput, useSendFollowUpMessage, useOpenAIGlobals } from "../../hooks/useOpenAI";
+import {
+  trackWidgetOpened,
+  trackAudioLoaded,
+  trackFileUploaded,
+  trackAudioExported,
+  trackFadeToggled,
+  trackPlayback,
+  trackAudioSeeked,
+  trackFormatChanged,
+  trackError,
+} from "../../utils/analytics";
 
 // Debug utility - only logs if DEBUG is not 'false'
 // Checks: window.__DEBUG__, import.meta.env.DEBUG, or import.meta.env.VITE_DEBUG
@@ -386,6 +397,11 @@ export function AudioEditor() {
       hasToolInput: !!window.openai?.toolInput,
     });
 
+    // Track widget opened event
+    trackWidgetOpened({
+      mode: isRingtoneMode ? 'ringtone' : 'audio',
+      platform: platform || 'desktop',
+    });
   }, []);
 
   // Format duration as MM:SS
@@ -800,6 +816,15 @@ export function AudioEditor() {
     
     debugLog('💾 [FILE UPLOAD] State updated - file ready for processing');
     
+    // Track file upload event
+    const sanitizedFileName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, ""), "audio-file");
+    trackFileUploaded({
+      upload_method: source,
+      file_type: file.type || fileExtension,
+      file_size: file.size,
+      file_name: sanitizedFileName,
+    });
+    
     // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -999,6 +1024,19 @@ export function AudioEditor() {
         });
         setWaveformData(waveform);
         
+        // Track audio loaded event
+        const loadSource = audioSource.isUploaded 
+          ? (uploadedAudioUrl ? 'manual' : 'drag_drop')
+          : 'chatgpt_url';
+        trackAudioLoaded({
+          source: loadSource,
+          duration: audioBuffer.duration,
+          format: audioFormat || detectAudioFormat(audioSource.url, audioSource.file),
+          sample_rate: audioBuffer.sampleRate,
+          channels: audioBuffer.numberOfChannels,
+          file_size: fileSize || arrayBuffer.byteLength,
+        });
+        
         // Try to extract metadata from audio file
         // Note: This may fail with CSP errors for blob URLs, but it's non-critical
         let title = null;
@@ -1104,6 +1142,17 @@ export function AudioEditor() {
           name: error.name,
           audioSource: audioSource.name
         });
+        
+        // Track error event
+        trackError({
+          error_type: 'load',
+          error_message: error.message || 'Unknown error loading audio',
+          context: {
+            audio_source: audioSource.isUploaded ? 'uploaded' : 'external',
+            has_url: !!audioSource.url,
+          },
+        });
+        
         audioBufferRef.current = null;
         // Fallback to filename if everything fails, or "Audio File" if name is empty
         const fallbackName = audioSource.name || "Audio File";
@@ -1266,7 +1315,22 @@ export function AudioEditor() {
 
   const handlePlay = () => {
     if (isLoading) return;
+    const wasPlaying = isPlaying;
     setIsPlaying(!isPlaying);
+    
+    // Track playback event
+    if (!wasPlaying) {
+      trackPlayback({
+        action: 'played',
+        position: selectedStart,
+        duration: selectedEnd - selectedStart,
+      });
+    } else {
+      trackPlayback({
+        action: 'paused',
+        position: trimmerPosition,
+      });
+    }
   };
 
   const handleExportAudio = async () => {
@@ -1429,6 +1493,19 @@ export function AudioEditor() {
       setDownloadUrl(resolvedDownloadUrl);
       setGenerationSuccess("Your audio download link is ready.");
 
+      // Track successful export event
+      trackAudioExported({
+        format: outputFormat,
+        duration: duration,
+        start_trim: startTrim,
+        end_trim: endTrim,
+        fade_in_enabled: fadeInEnabled,
+        fade_out_enabled: fadeOutEnabled,
+        fade_in_duration: fadeInTime,
+        fade_out_duration: fadeOutTime,
+        source: audioSource?.isUploaded ? 'manual' : 'chatgpt_url',
+      });
+
       try {
         await sendFollowUpMessage(
           `Audio generated successfully! Download it here: ${resolvedDownloadUrl}`
@@ -1441,6 +1518,17 @@ export function AudioEditor() {
       debugLog("🔗 [AUDIO DOWNLOAD] Resolved download URL:", resolvedDownloadUrl);
     } catch (error) {
       console.error("❌ [AUDIO GENERATE] Failed to export audio:", error);
+      
+      // Track export error event
+      trackError({
+        error_type: 'export',
+        error_message: error?.message || 'Unknown error exporting audio',
+        context: {
+          format: outputFormat,
+          has_audio: !!audioBufferRef.current,
+        },
+      });
+      
       const message =
         error?.message && typeof error.message === "string"
           ? error.message
@@ -1474,8 +1562,17 @@ export function AudioEditor() {
   };
 
   const handleFormatSelect = (format) => {
-    setOutputFormat(normalizeOutputFormat(format));
+    const oldFormat = outputFormat;
+    const newFormat = normalizeOutputFormat(format);
+    setOutputFormat(newFormat);
     setShowFormatDropdown(false);
+    
+    // Track format change event
+    trackFormatChanged({
+      old_format: oldFormat,
+      new_format: newFormat,
+      mode: isRingtoneMode ? 'ringtone' : 'audio',
+    });
   };
 
   // Helper to get clientX from either mouse or touch event
@@ -1592,7 +1689,7 @@ export function AudioEditor() {
             accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
             onChange={handleFileUpload}
             style={{ display: 'none' }}
-            aria-label="Upload audio file"
+            aria-label="Upload audio file or Drag-n-drop here"
           />
           <div 
             className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
@@ -1863,11 +1960,26 @@ export function AudioEditor() {
                     const next = !current;
                     if (next) {
                       const selectionDuration = selectedEnd - selectedStart;
+                      const fadeDuration = Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0));
                       setFadeInTime((prev) =>
-                        prev > 0 ? Math.min(prev, selectionDuration) : Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0))
+                        prev > 0 ? Math.min(prev, selectionDuration) : fadeDuration
                       );
+                      
+                      // Track fade toggle event
+                      trackFadeToggled({
+                        fade_type: 'in',
+                        enabled: true,
+                        duration: fadeDuration,
+                      });
                     } else {
                       setFadeInTime(0);
+                      
+                      // Track fade toggle event
+                      trackFadeToggled({
+                        fade_type: 'in',
+                        enabled: false,
+                        duration: 0,
+                      });
                     }
                     return next;
                   });
@@ -1918,11 +2030,26 @@ export function AudioEditor() {
                     const next = !current;
                     if (next) {
                       const selectionDuration = selectedEnd - selectedStart;
+                      const fadeDuration = Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0));
                       setFadeOutTime((prev) =>
-                        prev > 0 ? Math.min(prev, selectionDuration) : Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0))
+                        prev > 0 ? Math.min(prev, selectionDuration) : fadeDuration
                       );
+                      
+                      // Track fade toggle event
+                      trackFadeToggled({
+                        fade_type: 'out',
+                        enabled: true,
+                        duration: fadeDuration,
+                      });
                     } else {
                       setFadeOutTime(0);
+                      
+                      // Track fade toggle event
+                      trackFadeToggled({
+                        fade_type: 'out',
+                        enabled: false,
+                        duration: 0,
+                      });
                     }
                     return next;
                   });
