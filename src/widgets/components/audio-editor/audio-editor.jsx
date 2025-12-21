@@ -1720,7 +1720,7 @@ export function AudioEditor() {
                 }
               }}
             >
-              Select File
+              Select File or Drag-n-drop
             </label>
             <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
             {uploadError && (
