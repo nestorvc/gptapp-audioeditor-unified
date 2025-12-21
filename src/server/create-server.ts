@@ -161,7 +161,7 @@ export const createServer = () => {
     {
       title: "Open Audio Editor",
       description:
-        "Use this when the user wants to trim, cut, fade, preview, or enhance an audio clip and export it to formats like MP3, WAV, FLAC, OGG, or M4A.",
+        "Use this when the user wants to trim, cut, fade, preview, or enhance an audio file and export it to formats like MP3, WAV, FLAC, OGG, or M4A.",
       inputSchema: {
         audioFile: z
           .object({
@@ -221,7 +221,7 @@ export const createServer = () => {
     {
       title: "Open Ringtone Editor",
       description:
-        "Use this when the user wants to create or edit a ringtone by trimming audio, adjusting fades, and exporting it.",
+        "Use this when the user wants to create or edit a ringtone by trimming an audio file, adjusting fades, and exporting it.",
       inputSchema: {
         audioFile: z
           .object({

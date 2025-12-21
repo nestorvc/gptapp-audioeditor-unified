@@ -34,7 +34,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./create-server.js";
-import { finalizeLocalAudioExport } from "./services/audio.js";
+import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl } from "./services/audio.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const PORT = process.env.PORT || 8000;
@@ -134,6 +134,7 @@ const app = express();
 
 // Middleware setup
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(projectRoot, "public")));
 app.use(
   cors({
@@ -186,6 +187,151 @@ app.get("/mcp", methodNotAllowed);
 app.delete("/mcp", methodNotAllowed);
 
 app.post("/api/audio-export", upload.single("audio"), handleAudioExport);
+
+// handleAudioProcess - Handles audio processing with parameters (server-side processing)
+async function handleAudioProcess(req: Request, res: Response): Promise<void> {
+  // Handle both multipart/form-data (with file) and application/x-www-form-urlencoded (with URL)
+  const audioUrl = req.body.audioUrl;
+  const format = req.body.format;
+  const trackName = req.body.trackName;
+  const startTime = req.body.startTime;
+  const duration = req.body.duration;
+  const fadeInEnabled = req.body.fadeInEnabled;
+  const fadeInDuration = req.body.fadeInDuration;
+  const fadeOutEnabled = req.body.fadeOutEnabled;
+  const fadeOutDuration = req.body.fadeOutDuration;
+  const file = req.file;
+
+  // Validate required parameters
+  if (!format) {
+    res.status(400).json({ error: "Missing format parameter" });
+    return;
+  }
+
+  if (!audioUrl && !file) {
+    res.status(400).json({ error: "Either audioUrl or audio file must be provided" });
+    return;
+  }
+
+  if (startTime === undefined || duration === undefined) {
+    res.status(400).json({ error: "Missing startTime or duration parameters" });
+    return;
+  }
+
+  try {
+    let result;
+
+    if (audioUrl) {
+      // Process from URL
+      console.log("[Audio Process] Processing from URL:", {
+        audioUrl,
+        format,
+        startTime,
+        duration,
+        fadeInEnabled,
+        fadeInDuration,
+        fadeOutEnabled,
+        fadeOutDuration,
+      });
+
+      result = await processAudioFromUrl({
+        audioUrl: audioUrl as string,
+        format: format as string,
+        trackName: (trackName as string) || "audio",
+        startTime: parseFloat(startTime as string),
+        duration: parseFloat(duration as string),
+        fadeInEnabled: fadeInEnabled === "true" || fadeInEnabled === true,
+        fadeInDuration: fadeInDuration ? parseFloat(fadeInDuration as string) : 0,
+        fadeOutEnabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+        fadeOutDuration: fadeOutDuration ? parseFloat(fadeOutDuration as string) : 0,
+      });
+    } else if (file) {
+      // Process uploaded file
+      console.log("[Audio Process] Processing uploaded file:", {
+        fileName: file.originalname,
+        size: file.size,
+        format,
+        startTime,
+        duration,
+        fadeInEnabled,
+        fadeInDuration,
+        fadeOutEnabled,
+        fadeOutDuration,
+      });
+
+      result = await processAudioFromFile({
+        filePath: file.path,
+        format: format as string,
+        trackName: (trackName as string) || file.originalname || "audio",
+        startTime: parseFloat(startTime as string),
+        duration: parseFloat(duration as string),
+        fadeInEnabled: fadeInEnabled === "true" || fadeInEnabled === true,
+        fadeInDuration: fadeInDuration ? parseFloat(fadeInDuration as string) : 0,
+        fadeOutEnabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+        fadeOutDuration: fadeOutDuration ? parseFloat(fadeOutDuration as string) : 0,
+      });
+
+      // Clean up uploaded file
+      try {
+        await fs.promises.unlink(file.path);
+      } catch {
+        // ignore cleanup errors
+      }
+    } else {
+      res.status(400).json({ error: "Either audioUrl or audio file must be provided" });
+      return;
+    }
+
+    console.log("[Audio Process] Processed audio:", {
+      format: result.format,
+      fileName: result.fileName,
+      downloadUrl: result.downloadUrl,
+    });
+
+    res.json({
+      downloadUrl: result.downloadUrl,
+      fileName: result.fileName,
+      format: result.format,
+      extension: result.extension,
+    });
+  } catch (error) {
+    console.error("Failed to process audio", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to process audio";
+    res.status(500).json({ error: errorMessage });
+  }
+}
+
+// New endpoint for server-side processing (accepts JSON params + optional file)
+app.post("/api/audio-process", upload.single("audio"), handleAudioProcess);
+
+// handlePresignedUrl - Generates presigned S3 upload URL for direct client uploads
+async function handlePresignedUrl(req: Request, res: Response): Promise<void> {
+  const { fileName, contentType } = req.body;
+
+  if (!fileName) {
+    res.status(400).json({ error: "Missing fileName parameter" });
+    return;
+  }
+
+  try {
+    const result = await generatePresignedUploadUrl(
+      fileName as string,
+      (contentType as string) || "audio/mpeg"
+    );
+
+    res.json({
+      uploadUrl: result.uploadUrl,
+      fileKey: result.fileKey,
+      publicUrl: result.publicUrl,
+    });
+  } catch (error) {
+    console.error("Failed to generate presigned URL", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to generate presigned URL";
+    res.status(500).json({ error: errorMessage });
+  }
+}
+
+app.post("/api/s3-presigned-url", express.json(), handlePresignedUrl);
 
 // Error handling middleware to ensure CORS headers are always sent (must be after all routes)
 app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {

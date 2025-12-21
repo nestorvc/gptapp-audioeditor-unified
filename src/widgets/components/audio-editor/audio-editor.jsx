@@ -306,6 +306,10 @@ export function AudioEditor() {
   const [showFormatDropdown, setShowFormatDropdown] = useState(false);
   const [waveformData, setWaveformData] = useState([]);
   const [totalDuration, setTotalDuration] = useState(0);
+  const [audioChannels, setAudioChannels] = useState(0);
+  const [audioSampleRate, setAudioSampleRate] = useState(0);
+  const [fileSize, setFileSize] = useState(0);
+  const [audioFormat, setAudioFormat] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [startTrim, setStartTrim] = useState(0.2);
   const [endTrim, setEndTrim] = useState(0.6);
@@ -366,9 +370,90 @@ export function AudioEditor() {
 
   }, []);
 
-  // Update duplicated text when trackName changes
+  // Format duration as MM:SS
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return "00:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format channels as "Mono", "Stereo", or "X Channel"
+  const formatChannels = (channels) => {
+    if (channels === 1) return "Mono";
+    if (channels === 2) return "Stereo";
+    return `${channels} Channel${channels !== 1 ? 's' : ''}`;
+  };
+
+  // Format sample rate as "XX kHz"
+  const formatSampleRate = (sampleRate) => {
+    if (!sampleRate || sampleRate <= 0) return "0 kHz";
+    const kHz = Math.round(sampleRate / 1000);
+    return `${kHz} kHz`;
+  };
+
+  // Format file size as "XXX KB" or "X.X MB"
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes <= 0) return "0 KB";
+    const kb = bytes / 1024;
+    if (kb < 1024) {
+      return `${Math.round(kb)} KB`;
+    }
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  // Detect audio format from URL or file
+  const detectAudioFormat = (url, file) => {
+    if (file && file.name) {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (ext) {
+        const formatMap = { mp3: 'MP3', wav: 'WAV', m4a: 'M4A', m4r: 'M4R', flac: 'FLAC', ogg: 'OGG', aac: 'AAC', webm: 'WebM' };
+        return formatMap[ext] || ext.toUpperCase();
+      }
+    }
+    if (url) {
+      const urlWithoutQuery = url.split('?')[0];
+      const ext = urlWithoutQuery.split('.').pop()?.toLowerCase();
+      if (ext) {
+        const formatMap = { mp3: 'MP3', wav: 'WAV', m4a: 'M4A', m4r: 'M4R', flac: 'FLAC', ogg: 'OGG', aac: 'AAC', webm: 'WebM' };
+        return formatMap[ext] || ext.toUpperCase();
+      }
+    }
+    return "";
+  };
+
+  // Format marquee text with audio metadata
+  const formatMarqueeText = () => {
+    const parts = [];
+    
+    if (audioSampleRate > 0) {
+      parts.push(`Sample rate: ${formatSampleRate(audioSampleRate)}`);
+    }
+    
+    if (fileSize > 0) {
+      parts.push(`File size: ${formatFileSize(fileSize)}`);
+    }
+    
+    if (audioChannels > 0) {
+      parts.push(`Channels: ${formatChannels(audioChannels)}`);
+    }
+    
+    if (totalDuration > 0) {
+      parts.push(`Duration: ${formatDuration(totalDuration)}`);
+    }
+    
+    if (audioFormat) {
+      parts.push(`Format: ${audioFormat}`);
+    }
+    
+    return parts.join(" • ");
+  };
+
+  // Update duplicated text when metadata changes
   useEffect(() => {
-    if (trackName && marqueeContentRef.current) {
+    const marqueeText = formatMarqueeText();
+    if (marqueeContentRef.current) {
       const updateDuplicatedText = () => {
         const content = marqueeContentRef.current;
         if (content) {
@@ -376,7 +461,7 @@ export function AudioEditor() {
           if (container) {
             // First render with original text to measure
             const tempSpan = document.createElement('span');
-            tempSpan.textContent = trackName;
+            tempSpan.textContent = marqueeText;
             tempSpan.style.position = 'absolute';
             tempSpan.style.visibility = 'hidden';
             tempSpan.style.whiteSpace = 'nowrap';
@@ -389,10 +474,10 @@ export function AudioEditor() {
             // If text is shorter than 2x container width, duplicate it
             if (textWidth < containerWidth * 2) {
               const repetitions = Math.ceil((containerWidth * 2) / textWidth) + 1;
-              setDuplicatedText((trackName + " • ").repeat(repetitions));
+              setDuplicatedText((marqueeText + " • ").repeat(repetitions));
             } else {
               // For long text, duplicate once to create seamless loop
-              setDuplicatedText(trackName + " • " + trackName);
+              setDuplicatedText(marqueeText + " • " + marqueeText);
             }
           }
         }
@@ -403,7 +488,7 @@ export function AudioEditor() {
       window.addEventListener('resize', updateDuplicatedText);
       return () => window.removeEventListener('resize', updateDuplicatedText);
     }
-  }, [trackName]);
+  }, [totalDuration, audioChannels, audioSampleRate, fileSize, audioFormat]);
 
   const selectedStart = startTrim * totalDuration;
   const selectedEnd = endTrim * totalDuration;
@@ -731,6 +816,10 @@ export function AudioEditor() {
         // Use FileReader for uploaded files to avoid CSP issues with blob URLs
         if (audioSource.isUploaded && audioSource.file) {
           console.log('📖 [AUDIO LOAD] Using FileReader for uploaded file (avoiding CSP fetch issue)');
+          // Set file size and format from uploaded file
+          setFileSize(audioSource.file.size);
+          setAudioFormat(detectAudioFormat(null, audioSource.file));
+          
           const fileReaderStartTime = performance.now();
           arrayBuffer = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -768,6 +857,10 @@ export function AudioEditor() {
             sizeMB: (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2),
             conversionTimeSeconds: arrayBufferTime
           });
+          
+          // Set file size and format from fetched response
+          setFileSize(arrayBuffer.byteLength);
+          setAudioFormat(detectAudioFormat(audioSource.url, null));
         }
         
         const audioContextStartTime = performance.now();
@@ -787,6 +880,8 @@ export function AudioEditor() {
         audioContextRef.current = audioContext;
         audioBufferRef.current = audioBuffer;
         setTotalDuration(audioBuffer.duration);
+        setAudioChannels(audioBuffer.numberOfChannels);
+        setAudioSampleRate(audioBuffer.sampleRate);
         
         const waveformStartTime = performance.now();
         const waveform = await generateWaveform(audioBuffer);
@@ -1083,57 +1178,110 @@ export function AudioEditor() {
 
     // Try to get API base URL from multiple sources (build-time env, runtime window global, or fallback)
     const runtimeApiUrl = typeof window !== 'undefined' && window.__API_BASE_URL__;
-    const endpoint = `${runtimeApiUrl.replace(/\/$/, "")}/api/audio-export`;
+    const endpoint = `${runtimeApiUrl.replace(/\/$/, "")}/api/audio-process`;
 
     try {
-      const processed = prepareTrimmedAudioData(audioBufferRef.current, selectedStart, selectedEnd, {
+      const audioSource = getAudioSource();
+      if (!audioSource) {
+        throw new Error("No audio source available");
+      }
+
+      const totalDuration = audioBufferRef.current.duration;
+      const startTime = selectedStart * totalDuration;
+      const duration = (selectedEnd - selectedStart) * totalDuration;
+
+      console.log("📤 [AUDIO EXPORT] Preparing server-side processing:", {
+        audioSource: audioSource.isUploaded ? "uploaded file" : "external URL",
+        startTime: `${startTime.toFixed(2)}s`,
+        duration: `${duration.toFixed(2)}s`,
+        format: outputFormat,
         fadeInEnabled,
-        fadeOutEnabled,
         fadeInDuration: fadeInTime,
+        fadeOutEnabled,
         fadeOutDuration: fadeOutTime,
       });
 
-      // Calculate safe sample rate to keep file under 4MB (Vercel has 4.5MB limit)
-      const duration = selectedEnd - selectedStart;
-      const safeSampleRate = calculateSafeSampleRate(
-        duration,
-        processed.channelData.length,
-        4 // 4MB max (leaving 0.5MB safety margin)
-      );
-      
-      // Downsample if needed
-      const { channelData: finalChannelData, sampleRate: finalSampleRate } = 
-        downsampleAudio(processed.channelData, processed.sampleRate, safeSampleRate);
+      let response;
 
-      const wavBuffer = encodeChannelDataToWav(finalChannelData, finalSampleRate);
-      const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
-      
-      // Log file size for debugging
-      const fileSizeMB = (wavBlob.size / (1024 * 1024)).toFixed(2);
-      console.log("📤 [AUDIO EXPORT] Preparing to upload:", {
-        duration: `${duration.toFixed(2)}s`,
-        originalSampleRate: processed.sampleRate,
-        finalSampleRate: finalSampleRate,
-        channels: finalChannelData.length,
-        fileSize: wavBlob.size,
-        fileSizeMB: fileSizeMB,
-        format: outputFormat,
-        downsampled: processed.sampleRate !== finalSampleRate,
-      });
+      if (audioSource.isUploaded && audioSource.file) {
+        // Upload file directly to S3 first, then send S3 URL + processing parameters
+        console.log("📤 [AUDIO EXPORT] Uploading file to S3 first...");
+        
+        // Get presigned URL from server
+        const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName: audioSource.file.name,
+            contentType: audioSource.file.type || "audio/mpeg",
+          }),
+        });
 
-      const formData = new FormData();
-      formData.append("audio", wavBlob, "trimmed.wav");
-      formData.append("format", outputFormat);
-      formData.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
-      formData.append("fadeInEnabled", String(fadeInEnabled));
-      formData.append("fadeOutEnabled", String(fadeOutEnabled));
-      formData.append("fadeInTime", fadeInTime.toString());
-      formData.append("fadeOutTime", fadeOutTime.toString());
+        if (!presignedUrlResponse.ok) {
+          throw new Error("Failed to get presigned upload URL");
+        }
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
-      });
+        const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
+
+        // Upload file directly to S3
+        const s3UploadResponse = await fetch(uploadUrl, {
+          method: "PUT",
+          body: audioSource.file,
+          headers: {
+            "Content-Type": audioSource.file.type || "audio/mpeg",
+          },
+        });
+
+        if (!s3UploadResponse.ok) {
+          throw new Error("Failed to upload file to S3");
+        }
+
+        console.log("✅ [AUDIO EXPORT] File uploaded to S3:", publicUrl);
+
+        // Send S3 URL + processing parameters to server
+        const params = new URLSearchParams();
+        params.append("audioUrl", publicUrl);
+        params.append("format", outputFormat);
+        params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+        params.append("startTime", startTime.toString());
+        params.append("duration", duration.toString());
+        params.append("fadeInEnabled", String(fadeInEnabled));
+        params.append("fadeInDuration", fadeInTime.toString());
+        params.append("fadeOutEnabled", String(fadeOutEnabled));
+        params.append("fadeOutDuration", fadeOutTime.toString());
+
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
+      } else if (audioSource.url) {
+        // Send processing parameters with audio URL (no file upload needed)
+        const params = new URLSearchParams();
+        params.append("audioUrl", audioSource.url);
+        params.append("format", outputFormat);
+        params.append("trackName", sanitizeFileName(trackName || audioSource.name || "audio-track"));
+        params.append("startTime", startTime.toString());
+        params.append("duration", duration.toString());
+        params.append("fadeInEnabled", String(fadeInEnabled));
+        params.append("fadeInDuration", fadeInTime.toString());
+        params.append("fadeOutEnabled", String(fadeOutEnabled));
+        params.append("fadeOutDuration", fadeOutTime.toString());
+
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
+      } else {
+        throw new Error("No valid audio source available");
+      }
 
       if (!response.ok) {
         let errorMessage = "Server failed to export audio.";
@@ -1398,7 +1546,7 @@ export function AudioEditor() {
             ref={marqueeContentRef}
             className="marquee-content"
           >
-            <span>{duplicatedText || trackName || "Loading..."}</span>
+            <span>{duplicatedText || formatMarqueeText() || "Loading..."}</span>
           </div>
         </div>
 

@@ -35,7 +35,8 @@ console.log("process.env.AWS_REGION", process.env.AWS_REGION);
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import ffmpeg from "fluent-ffmpeg";
-import { PutObjectCommand, type PutObjectCommandInput, S3Client } from "@aws-sdk/client-s3";
+import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
@@ -48,7 +49,8 @@ const DEFAULT_TMP_PREFIX = "audio";
 const TEMP_DIR = process.env.VERCEL ? "/tmp" : path.join(projectRoot, "tmp");
 const s3Region = process.env.AWS_REGION;
 const s3Bucket = process.env.S3_BUCKET;
-const s3KeyPrefix = process.env.S3_KEY_PREFIX;
+const s3RingtonesFolder = process.env.S3_RINGTONES_FOLDER;
+const s3UploadsFolder = process.env.S3_UPLOADS_FOLDER;
 const s3PublicBaseUrl = process.env.S3_PUBLIC_BASE_URL ?? "";
 const s3ObjectAcl = process.env.S3_OBJECT_ACL ?? undefined;
 export const AUDIO_EXPORT_FORMATS = ["mp3", "wav", "flac", "ogg", "m4a", "m4r"] as const;
@@ -89,7 +91,7 @@ const s3UploadConfig: S3UploadConfig = {
   client: s3Client,
   bucket: s3Bucket,
   region: s3Region,
-  keyPrefix: s3KeyPrefix,
+  keyPrefix: s3RingtonesFolder,
   publicBaseUrl: s3PublicBaseUrl,
   objectAcl: s3ObjectAcl,
 };
@@ -598,5 +600,189 @@ export async function trimLast30Seconds({
         }
       })
     );
+  }
+}
+
+// processAudioFromUrl - Processes audio from URL with custom trim and fade parameters
+export async function processAudioFromUrl({
+  audioUrl,
+  format,
+  trackName,
+  startTime,
+  duration,
+  fadeInEnabled = false,
+  fadeInDuration = 0,
+  fadeOutEnabled = false,
+  fadeOutDuration = 0,
+}: {
+  audioUrl: string;
+  format: AudioExportFormat;
+  trackName: string;
+  startTime: number;
+  duration: number;
+  fadeInEnabled?: boolean;
+  fadeInDuration?: number;
+  fadeOutEnabled?: boolean;
+  fadeOutDuration?: number;
+}): Promise<AudioExportResult> {
+  let downloadedFilePath: string | null = null;
+  let processedFilePath: string | null = null;
+
+  try {
+    const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
+    downloadedFilePath = filePath;
+
+    const trackNameBase = sanitizeFileName(
+      (trackName || originalFileName || DEFAULT_TMP_PREFIX).replace(/\.[^/.]+$/, ""),
+      DEFAULT_TMP_PREFIX
+    );
+
+    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
+    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+
+    await trimAudioWithFade({
+      inputPath: downloadedFilePath,
+      outputPath: processedFilePath,
+      startTime,
+      duration,
+      fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
+      fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
+      format,
+    });
+
+    const { downloadUrl, fileName } = await uploadAudioToS3({
+      filePath: processedFilePath,
+      mimeType,
+      downloadName: trackNameBase,
+      extension,
+      config: s3UploadConfig,
+    });
+
+    return {
+      downloadUrl,
+      fileName,
+      format,
+      trackName: trackNameBase,
+      extension,
+    };
+  } finally {
+    await Promise.all(
+      [downloadedFilePath, processedFilePath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
+  }
+}
+
+// generatePresignedUploadUrl - Generates a presigned URL for direct S3 upload
+export async function generatePresignedUploadUrl(fileName: string, contentType: string): Promise<{ uploadUrl: string; fileKey: string; publicUrl: string }> {
+  if (!s3Client || !s3Bucket) {
+    throw new Error("S3 configuration is missing on the server.");
+  }
+
+  const keyPrefixNormalized = s3UploadsFolder
+    ? s3UploadsFolder.replace(/^\/*/, "").replace(/\/*$/, "")
+    : "";
+  const fileExtension = path.extname(fileName) || ".tmp";
+  const sanitizedFileName = sanitizeFileName(fileName.replace(/\.[^/.]+$/, ""), DEFAULT_TMP_PREFIX);
+  const fileKey = `${keyPrefixNormalized ? `${keyPrefixNormalized}/` : ""}${Date.now()}-${randomUUID()}-${sanitizedFileName}${fileExtension}`;
+
+  const command = new PutObjectCommand({
+    Bucket: s3Bucket,
+    Key: fileKey,
+    ContentType: contentType,
+  });
+
+  const uploadUrl = await getSignedUrl(s3Client as any, command as any, { expiresIn: 3600 }); // 1 hour expiry
+
+  const publicUrl = s3PublicBaseUrl && s3PublicBaseUrl.length > 0
+    ? `${s3PublicBaseUrl.replace(/\/+$/, "")}/${fileKey}`
+    : `https://${s3Bucket}.s3.${s3Region}.amazonaws.com/${fileKey}`;
+
+  return {
+    uploadUrl,
+    fileKey,
+    publicUrl,
+  };
+}
+
+// processAudioFromFile - Processes uploaded audio file with custom trim and fade parameters
+export async function processAudioFromFile({
+  filePath,
+  format,
+  trackName,
+  startTime,
+  duration,
+  fadeInEnabled = false,
+  fadeInDuration = 0,
+  fadeOutEnabled = false,
+  fadeOutDuration = 0,
+}: {
+  filePath: string;
+  format: AudioExportFormat;
+  trackName: string;
+  startTime: number;
+  duration: number;
+  fadeInEnabled?: boolean;
+  fadeInDuration?: number;
+  fadeOutEnabled?: boolean;
+  fadeOutDuration?: number;
+}): Promise<AudioExportResult> {
+  let processedFilePath: string | null = null;
+
+  try {
+    const trackNameBase = sanitizeFileName(
+      trackName.replace(/\.[^/.]+$/, ""),
+      DEFAULT_TMP_PREFIX
+    );
+
+    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
+    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+
+    await trimAudioWithFade({
+      inputPath: filePath,
+      outputPath: processedFilePath,
+      startTime,
+      duration,
+      fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
+      fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
+      format,
+    });
+
+    // Use S3_UPLOADS_FOLDER for uploaded files
+    const uploadsConfig: S3UploadConfig = {
+      ...s3UploadConfig,
+      keyPrefix: s3UploadsFolder,
+    };
+
+    const { downloadUrl, fileName } = await uploadAudioToS3({
+      filePath: processedFilePath,
+      mimeType,
+      downloadName: trackNameBase,
+      extension,
+      config: uploadsConfig,
+    });
+
+    return {
+      downloadUrl,
+      fileName,
+      format,
+      trackName: trackNameBase,
+      extension,
+    };
+  } finally {
+    if (processedFilePath) {
+      try {
+        await fs.promises.unlink(processedFilePath);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
   }
 }
