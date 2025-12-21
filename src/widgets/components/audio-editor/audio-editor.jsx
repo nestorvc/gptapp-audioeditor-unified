@@ -1449,7 +1449,7 @@ export function AudioEditor() {
     } finally {
       setTimeout(() => {
         setIsGenerating(false);
-      }, 2000);
+      }, 5000);
     }
   };
 
@@ -1558,7 +1558,7 @@ export function AudioEditor() {
     }
   };
 
-  useEffect(() => {   
+  useEffect(() => {
     if (isDraggingStart || isDraggingEnd || isDraggingTrimmer) {
       // Mouse events
       document.addEventListener("mousemove", handleMove);
@@ -1578,12 +1578,10 @@ export function AudioEditor() {
     }
   }, [isDraggingStart, isDraggingEnd, isDraggingTrimmer]);
 
-  const hasChatGptAudio = toolOutput?.audioUrl && !isChatConversationFileUrl(toolOutput.audioUrl);
-  console.log('hasChatGptAudio?', hasChatGptAudio);
+  const audioSource = getAudioSource();
 
-  // Show upload UI ONLY if no audio source is available AND no ChatGPT audio URL exists
-  // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
-  if (!hasChatGptAudio) {
+  // Show upload UI if no audio source is available
+  if (!audioSource) {
     return (
       <div className="ringtone-editor">
         <div className="upload-container">
@@ -1637,9 +1635,8 @@ export function AudioEditor() {
 
   return (
     <div className="ringtone-editor">
-      <div className="editor-content">
-        {/* Header */}
-        <div className="ringtone-header">
+      {/* Header */}
+      <div className="ringtone-header">
         <button
           onClick={handlePlay}
           disabled={isLoading}
@@ -1997,7 +1994,6 @@ export function AudioEditor() {
             {generationError}
           </div>
         )}
-      </div>
       </div>
     </div>
   );
