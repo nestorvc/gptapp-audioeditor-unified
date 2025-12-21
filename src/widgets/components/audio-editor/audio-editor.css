@@ -303,7 +303,7 @@ body {
   height: 120px;
   cursor: crosshair;
   user-select: none;
-  margin-bottom: 20px;
+  /* margin-bottom: 20px; */
   overflow: hidden;
   width: auto;
   /* Prevent scrolling during drag on touch devices */
@@ -313,7 +313,6 @@ body {
 
 /* Upload mode - when waveform-container contains upload-area */
 .waveform-container:has(.upload-area) {
-  height: auto;
   cursor: default;
   display: flex;
   align-items: center;
@@ -736,11 +735,23 @@ body {
   margin-bottom: var(--space-6);
 }
 
+.upload-title-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
 .upload-title {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+}
+
+.upload-title-icon {
+  color: var(--text-primary);
+  flex-shrink: 0;
+  opacity: 0.8;
 }
 
 .upload-description {

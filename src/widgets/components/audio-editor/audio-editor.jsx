@@ -1703,7 +1703,16 @@ export function AudioEditor() {
     return (
       <div className="ringtone-editor">
         {/* Header */}
-        <div className="ringtone-header"></div>
+        <div className="ringtone-header">
+          <div className="upload-title-container">
+            <h2 className="upload-title">Upload Audio File</h2>
+            <svg className="upload-title-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 14V6C2 5.44772 2.44772 5 3 5H5C5.55228 5 6 5.44772 6 6V14C6 14.5523 5.55228 15 5 15H3C2.44772 15 2 14.5523 2 14Z" fill="currentColor"/>
+              <path d="M7 10V8C7 7.44772 7.44772 7 8 7H10C10.5523 7 11 7.44772 11 8V10C11 10.5523 10.5523 11 10 11H8C7.44772 11 7 10.5523 7 10Z" fill="currentColor"/>
+              <path d="M12 12V6C12 5.44772 12.4477 5 13 5H15C15.5523 5 16 5.44772 16 6V12C16 12.5523 15.5523 13 15 13H13C12.4477 13 12 12.5523 12 12Z" fill="currentColor"/>
+            </svg>
+          </div>
+        </div>
         
         {/* Waveform Section - Upload UI */}
         <div className="waveform-container">
@@ -1721,12 +1730,7 @@ export function AudioEditor() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-          >
-            <svg className="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3"/>
-              <path d="M32 20V44M20 32L32 20L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <h2 className="upload-title">Upload Audio File</h2>
+          >            
             <p className="upload-description">
               {isDraggingOver ? 'Drop your audio file here' : (
                 <>
