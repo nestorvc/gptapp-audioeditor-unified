@@ -1598,8 +1598,60 @@ export function AudioEditor() {
   // Wait for toolOutput to be checked before showing upload screen
   // This prevents flashing the upload screen when ChatGPT provides audio
   if (hasCheckedToolOutput) {
-    if (hasChatGptAudio) {
+    if (!hasChatGptAudio) {
+      // Upload File Screen
       return (
+        <div className="ringtone-editor">
+          <div className="upload-container">
+            <input
+              ref={fileInputRef}
+              id="audio-file-input"
+              type="file"
+              accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+              aria-label="Upload audio file"
+            />
+            <div 
+              className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <svg className="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3"/>
+                <path d="M32 20V44M20 32L32 20L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <h2 className="upload-title">Upload Audio File</h2>
+              <p className="upload-description">
+                {isDraggingOver ? 'Drop your audio file here' : 'Drag and drop an audio file or choose one to edit and export'}
+              </p>
+              <label 
+                htmlFor="audio-file-input" 
+                className="upload-button"
+                onClick={(e) => {
+                  // Programmatically trigger file input for better mobile app compatibility
+                  e.preventDefault();
+                  if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }}
+              >
+                Select File
+              </label>
+              <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
+              {uploadError && (
+                <div className="upload-error" role="alert">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ); 
+    } else {
+       // Audio Editor Screen
+       return (
         <div className="ringtone-editor">
           <div className="editor-content">
             {/* Header */}
@@ -1965,59 +2017,9 @@ export function AudioEditor() {
           </div>
         </div>
       );
-    } else {
-      // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
-      return (
-        <div className="ringtone-editor">
-          <div className="upload-container">
-            <input
-              ref={fileInputRef}
-              id="audio-file-input"
-              type="file"
-              accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-              aria-label="Upload audio file"
-            />
-            <div 
-              className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <svg className="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3"/>
-                <path d="M32 20V44M20 32L32 20L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <h2 className="upload-title">Upload Audio File</h2>
-              <p className="upload-description">
-                {isDraggingOver ? 'Drop your audio file here' : 'Drag and drop an audio file or choose one to edit and export'}
-              </p>
-              <label 
-                htmlFor="audio-file-input" 
-                className="upload-button"
-                onClick={(e) => {
-                  // Programmatically trigger file input for better mobile app compatibility
-                  e.preventDefault();
-                  if (fileInputRef.current) {
-                    fileInputRef.current.click();
-                  }
-                }}
-              >
-                Select File
-              </label>
-              <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
-              {uploadError && (
-                <div className="upload-error" role="alert">
-                  {uploadError}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      );
     }
   } else {
+    // Loading Screen
     // Show loading state while waiting for toolOutput
     return (
       <div className="ringtone-editor">
