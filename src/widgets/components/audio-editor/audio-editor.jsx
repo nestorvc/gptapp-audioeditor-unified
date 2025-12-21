@@ -397,7 +397,7 @@ export function AudioEditor() {
     // This prevents flashing the upload screen when ChatGPT provides audio
     const checkTimer = setTimeout(() => {
       setHasCheckedToolOutput(true);
-    }, 150); // Small delay to allow toolOutput to populate
+    }, 2000); // Small delay to allow toolOutput to populate
 
     return () => clearTimeout(checkTimer);
   }, [toolOutput]);
@@ -1597,424 +1597,426 @@ export function AudioEditor() {
 
   // Wait for toolOutput to be checked before showing upload screen
   // This prevents flashing the upload screen when ChatGPT provides audio
-  if (hasCheckedToolOutput && hasChatGptAudio) {
-    return (
-      <div className="ringtone-editor">
-        <div className="editor-content">
-          {/* Header */}
-          <div className="ringtone-header">
-          <button
-            onClick={handlePlay}
-            disabled={isLoading}
-            className={`play-button ${isPlaying ? "playing" : ""} ${isLoading ? "loading" : ""}`}
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isLoading ? (
-              <span className="loading-spinner">...</span>
-            ) : isPlaying ? (
-              <svg className="play-icon" width="35" height="35" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M0 10C0 4.47715 4.47715 0 10 0C15.5228 0 20 4.47715 20 10C20 15.5228 15.5228 20 10 20C4.47715 20 0 15.5228 0 10ZM6.25 7.25V12.75C6.25 13.5523 6.69772 13.75 7.25 13.75H8C8.55228 13.75 9 13.5523 9 12.75V7.25C9 6.69772 8.55228 6.25 8 6.25H7.25C6.69772 6.25 6.25 6.69772 6.25 7.25ZM12 6.25C11.4477 6.25 11 6.69772 11 7.25V12.75C11 13.5523 11.4477 13.75 12 13.75H12.75C13.3023 13.75 13.75 13.5523 13.75 12.75V7.25C13.75 6.69772 13.3023 6.25 12.75 6.25H12Z" fill="currentColor"/>
-              </svg>
-            ) : (
-              <svg className="play-icon" width="35" height="35" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" clipRule="evenodd" d="M10 0C4.47715 0 0 4.47715 0 10C0 15.5228 4.47715 20 10 20C15.5228 20 20 15.5228 20 10C20 4.47715 15.5228 0 10 0ZM7 6.96328V13.0368C7 13.9372 7.99609 14.481 8.7535 13.9941L13.4773 10.9574C14.1742 10.5094 14.1742 9.49071 13.4773 9.04272L8.7535 6.00596C7.9961 5.51906 7 6.06288 7 6.96328Z" fill="currentColor"/>
-              </svg>
-            )}
-          </button>
-
-          <div className="track-name-marquee">
-            <div 
-              ref={marqueeContentRef}
-              className="marquee-content"
-            >
-              <span>{duplicatedText || formatMarqueeText() || "Loading..."}</span>
-            </div>
-          </div>
-
-          <div className="format-dropdown-container">
+  if (hasCheckedToolOutput) {
+    if (hasChatGptAudio) {
+      return (
+        <div className="ringtone-editor">
+          <div className="editor-content">
+            {/* Header */}
+            <div className="ringtone-header">
             <button
-              className="format-dropdown"
-              onClick={() => setShowFormatDropdown(!showFormatDropdown)}
+              onClick={handlePlay}
+              disabled={isLoading}
+              className={`play-button ${isPlaying ? "playing" : ""} ${isLoading ? "loading" : ""}`}
+              aria-label={isPlaying ? "Pause" : "Play"}
             >
-              <span>
-                {isRingtoneMode 
-                  ? (outputFormat === 'm4r' ? 'For iPhone' : 'For Android')
-                  : `Export as .${outputFormat}`
-                }
-              </span>
-              <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M0.292892 0.292894C0.683416 -0.0976306 1.31658 -0.0976315 1.70711 0.292892L7.00002 5.58579L12.2929 0.292894C12.6834 -0.0976306 13.3166 -0.0976315 13.7071 0.292892C14.0976 0.683416 14.0976 1.31658 13.7071 1.70711L7.70713 7.70711C7.51959 7.89464 7.26524 8 7.00002 8C6.7348 8 6.48045 7.89464 6.29291 7.70711L0.292894 1.70711C-0.0976306 1.31658 -0.0976315 0.683419 0.292892 0.292894Z" fill="currentColor"/>
-              </svg>
-            </button>
-            {showFormatDropdown && (
-              <>
-                <div
-                  className="dropdown-overlay"
-                  onClick={() => setShowFormatDropdown(false)}
-                />
-                <div className="format-dropdown-menu">
-                  {(isRingtoneMode ? RINGTONE_FORMAT_OPTIONS : OUTPUT_FORMAT_OPTIONS).map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => handleFormatSelect(option.value)}
-                      className={outputFormat === option.value ? "active" : ""}
-                    >
-                      <span>{option.label}</span>
-                      {outputFormat === option.value && (
-                        <svg width="14" height="13" viewBox="0 0 14 13" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M13.5633 0.173869C14.0196 0.484992 14.1374 1.10712 13.8262 1.56343L6.32623 12.5634C6.15848 12.8095 5.88982 12.9679 5.59335 12.9957C5.29688 13.0235 5.00345 12.9178 4.79289 12.7072L0.292893 8.2072C-0.0976311 7.81668 -0.0976311 7.18351 0.292893 6.79299C0.683417 6.40247 1.31658 6.40247 1.70711 6.79299L5.35368 10.4396L12.1738 0.43676C12.4849 -0.0195528 13.107 -0.137253 13.5633 0.173869Z" fill="currentColor"/>
-                        </svg>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Waveform Section */}
-        <div className="waveform-section" ref={waveformSectionRef}>
-          {/* Time markers */}
-          <div className="time-markers-container">
-            {/* Time cue lines - every 10% */}
-            <div className="time-cue-lines-container">
-              {[...Array(11)].map((_, i) => (
-                <div
-                  key={`cue-${i}`}
-                  className="time-cue-line"
-                  style={{ left: `${i * 10}%` }}
-                />
-              ))}
-            </div>
-            <div className="time-markers">
-              <span>0:00.0</span>
-              <span>{totalDuration > 0 ? formatTime(totalDuration / 2) : "0:00.0"}</span>
-              <span>{totalDuration > 0 ? formatTime(totalDuration) : "0:00.0"}</span>
-            </div>
-          </div>
-
-          {/* Trimmer line */}
-          <div
-              className="trimmer-line"
-              style={{ left: `${trimmerLinePosition}%` }}
-            />
-
-          {/* Start pin - positioned at section level to align with trimmer line */}
-          <svg
-            className="trim-pin start-pin"
-            style={{ left: `${startPinPosition}%` }}
-            width="60"
-            height="65"
-            viewBox="0 0 60 65"
-            onMouseDown={(e) => handleTrimPinStart('start', e)}
-            onTouchStart={(e) => handleTrimPinStart('start', e)}
-          >
-            <path
-              d="M 0 30 A 30 30 0 0 1 60 30 L 30 65 Z"
-              fill="var(--blue)"
-            />
-          </svg>
-
-          {/* End pin - positioned at section level to align with trimmer line */}
-          <svg
-            className="trim-pin end-pin"
-            style={{ left: `${endPinPosition}%` }}
-            width="60"
-            height="65"
-            viewBox="0 0 60 65"
-            onMouseDown={(e) => handleTrimPinStart('end', e)}
-            onTouchStart={(e) => handleTrimPinStart('end', e)}
-          >
-            <path
-              d="M 30 0 L 0 35 A 30 30 0 0 0 60 35 Z"
-              fill="var(--blue)"
-            />
-          </svg>
-
-          {/* Waveform container */}
-          <div
-            className="waveform-container"
-            ref={waveformRef}
-            onMouseDown={handleWaveformStart}
-            onTouchStart={handleWaveformStart}
-          >
-            {/* Background waveform */}
-            {isLoading ? (
-              <div className="waveform-loading">Loading audio...</div>
-            ) : (
-              <>
-                <div className="waveform-background">
-                  {waveformData.map((height, index) => (
-                    <div
-                      key={index}
-                      className="waveform-bar background-bar"
-                      style={{ height: `${height * 100}%` }}
-                    />
-                  ))}
-                </div>
-
-                {/* Selected segment overlay */}
-                <div className="waveform-selected">
-                  {waveformData.map((height, index) => {
-                    const position = index / waveformData.length;
-                    const isInRange = position >= startTrim && position <= endTrim;
-                    
-                    if (!isInRange) return null;
-                    
-                    // Calculate exact position to align with background bars
-                    // Use the same percentage distribution as flex (flex: 1 distributes evenly)
-                    const totalBars = waveformData.length;
-                    const barWidthPercent = 70 / totalBars;
-                    const leftPercent = (index / totalBars) * 100;
-                    
-                    return (
-                      <div
-                        key={`selected-${index}`}
-                        className="waveform-bar selected-bar"
-                        style={{
-                          height: `${height * 100}%`,
-                          position: 'absolute',
-                          left: `${leftPercent}%`,
-                          width: `${barWidthPercent}%`,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Trimmer label */}
-          <div className="trimmer-label">TRIMMER</div>
-        </div>
-
-        {/* Trim and Fade Controls */}
-        <div className="trim-controls">
-          {/* Start Section - Trim Start + Fade In */}
-          <div className="control-section start-section">
-            {/* Trim Start */}
-            <div className="trim-control">
-              <div className="trim-time-controls">
-                <button
-                  className="trim-button"
-                  onClick={() => handleTrimStartChange(-0.1)}
-                  disabled={startTrim <= 0}
-                >
-                  <svg width="16" height="3" viewBox="0 0 12 2" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M0 1C0 0.447715 0.447715 0 1 0H11C11.5523 0 12 0.447715 12 1C12 1.55228 11.5523 2 11 2H1C0.447715 2 0 1.55228 0 1Z" fill="currentColor"/>
-                  </svg>
-                </button>
-                <span className="trim-time">{formatTime(selectedStart)}</span>
-                <button
-                  className="trim-button"
-                  onClick={() => handleTrimStartChange(0.1)}
-                  disabled={startTrim >= endTrim - 0.05}
-                >
-                  <svg width="16" height="16" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6 0C6.55228 0 7 0.447715 7 1V5H11C11.5523 5 12 5.44772 12 6C12 6.55228 11.5523 7 11 7H7V11C7 11.5523 6.55228 12 6 12C5.44772 12 5 11.5523 5 11V7H1C0.447715 7 0 6.55228 0 6C0 5.44772 0.447715 5 1 5H5V1C5 0.447715 5.44772 0 6 0Z" fill="currentColor"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            
-            {/* Fade In */}
-            <div className="fade-control">
-              <div className="fade-toggle-container">
-                <button
-                  className={`toggle-switch ${fadeInEnabled ? "enabled" : ""}`}
-                  onClick={() => {
-                    setFadeInEnabled((current) => {
-                      const next = !current;
-                      if (next) {
-                        const selectionDuration = selectedEnd - selectedStart;
-                        setFadeInTime((prev) =>
-                          prev > 0 ? Math.min(prev, selectionDuration) : Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0))
-                        );
-                      } else {
-                        setFadeInTime(0);
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <div className="toggle-slider" />
-                </button>
-                <span className="fade-label">Fade In</span>
-              </div>
-            </div>
-          </div>
-
-          {/* End Section - Trim End + Fade Out */}
-          <div className="control-section end-section">
-            {/* Trim End */}
-            <div className="trim-control">
-              <div className="trim-time-controls">
-                <button
-                  className="trim-button"
-                  onClick={() => handleTrimEndChange(-0.1)}
-                  disabled={endTrim <= startTrim + 0.05}
-                >
-                  <svg width="16" height="3" viewBox="0 0 12 2" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M0 1C0 0.447715 0.447715 0 1 0H11C11.5523 0 12 0.447715 12 1C12 1.55228 11.5523 2 11 2H1C0.447715 2 0 1.55228 0 1Z" fill="currentColor"/>
-                  </svg>
-                </button>
-                <span className="trim-time">{formatTime(selectedEnd)}</span>
-                <button
-                  className="trim-button"
-                  onClick={() => handleTrimEndChange(0.1)}
-                  disabled={endTrim >= 1}
-                >
-                  <svg width="16" height="16" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6 0C6.55228 0 7 0.447715 7 1V5H11C11.5523 5 12 5.44772 12 6C12 6.55228 11.5523 7 11 7H7V11C7 11.5523 6.55228 12 6 12C5.44772 12 5 11.5523 5 11V7H1C0.447715 7 0 6.55228 0 6C0 5.44772 0.447715 5 1 5H5V1C5 0.447715 5.44772 0 6 0Z" fill="currentColor"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Fade Out */}
-            <div className="fade-control">
-              <div className="fade-toggle-container">
-              <span className="fade-label">Fade Out</span>
-                <button
-                  className={`toggle-switch ${fadeOutEnabled ? "enabled" : ""}`}
-                  onClick={() => {
-                    setFadeOutEnabled((current) => {
-                      const next = !current;
-                      if (next) {
-                        const selectionDuration = selectedEnd - selectedStart;
-                        setFadeOutTime((prev) =>
-                          prev > 0 ? Math.min(prev, selectionDuration) : Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0))
-                        );
-                      } else {
-                        setFadeOutTime(0);
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <div className="toggle-slider" />
-                </button>      
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Submit Container */}
-        <div className="submit-container"> 
-          {/* Rights Confirmation */}
-          <div className="rights-confirmation">
-            <button
-              className={`toggle-switch ${rightsConfirmed ? "enabled" : ""}`}
-              onClick={() => setRightsConfirmed(!rightsConfirmed)}
-            >
-              <div className="toggle-slider" />
-            </button>
-            <span className="rights-text">I own the rights to use this audio.</span>
-          </div>
-
-          {/* Export Button */}
-          <button
-            className="generate-button"
-            onClick={handleExportAudio}
-            disabled={!rightsConfirmed || isLoading || isGenerating}
-            >
-            {isGenerating ? (
-              <>
-                <span className="spinner" aria-hidden="true" />
-                Exporting...
-              </>
-            ) : (
-              "Export audio"
-            )}
-          </button>
-
-          {generationSuccess && (
-            <div className="generation-status success">
-              {downloadUrl ? (
-                <>
-                  Your audio{" "}
-                  <a
-                    href={downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ textDecoration: "underline", color: "inherit" }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.open(downloadUrl, "_blank", "noopener,noreferrer");
-                    }}
-                  >
-                    download link
-                  </a>{" "}
-                  is ready.
-                </>
+              {isLoading ? (
+                <span className="loading-spinner">...</span>
+              ) : isPlaying ? (
+                <svg className="play-icon" width="35" height="35" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M0 10C0 4.47715 4.47715 0 10 0C15.5228 0 20 4.47715 20 10C20 15.5228 15.5228 20 10 20C4.47715 20 0 15.5228 0 10ZM6.25 7.25V12.75C6.25 13.5523 6.69772 13.75 7.25 13.75H8C8.55228 13.75 9 13.5523 9 12.75V7.25C9 6.69772 8.55228 6.25 8 6.25H7.25C6.69772 6.25 6.25 6.69772 6.25 7.25ZM12 6.25C11.4477 6.25 11 6.69772 11 7.25V12.75C11 13.5523 11.4477 13.75 12 13.75H12.75C13.3023 13.75 13.75 13.5523 13.75 12.75V7.25C13.75 6.69772 13.3023 6.25 12.75 6.25H12Z" fill="currentColor"/>
+                </svg>
               ) : (
-                generationSuccess
+                <svg className="play-icon" width="35" height="35" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path fillRule="evenodd" clipRule="evenodd" d="M10 0C4.47715 0 0 4.47715 0 10C0 15.5228 4.47715 20 10 20C15.5228 20 20 15.5228 20 10C20 4.47715 15.5228 0 10 0ZM7 6.96328V13.0368C7 13.9372 7.99609 14.481 8.7535 13.9941L13.4773 10.9574C14.1742 10.5094 14.1742 9.49071 13.4773 9.04272L8.7535 6.00596C7.9961 5.51906 7 6.06288 7 6.96328Z" fill="currentColor"/>
+                </svg>
+              )}
+            </button>
+
+            <div className="track-name-marquee">
+              <div 
+                ref={marqueeContentRef}
+                className="marquee-content"
+              >
+                <span>{duplicatedText || formatMarqueeText() || "Loading..."}</span>
+              </div>
+            </div>
+
+            <div className="format-dropdown-container">
+              <button
+                className="format-dropdown"
+                onClick={() => setShowFormatDropdown(!showFormatDropdown)}
+              >
+                <span>
+                  {isRingtoneMode 
+                    ? (outputFormat === 'm4r' ? 'For iPhone' : 'For Android')
+                    : `Export as .${outputFormat}`
+                  }
+                </span>
+                <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M0.292892 0.292894C0.683416 -0.0976306 1.31658 -0.0976315 1.70711 0.292892L7.00002 5.58579L12.2929 0.292894C12.6834 -0.0976306 13.3166 -0.0976315 13.7071 0.292892C14.0976 0.683416 14.0976 1.31658 13.7071 1.70711L7.70713 7.70711C7.51959 7.89464 7.26524 8 7.00002 8C6.7348 8 6.48045 7.89464 6.29291 7.70711L0.292894 1.70711C-0.0976306 1.31658 -0.0976315 0.683419 0.292892 0.292894Z" fill="currentColor"/>
+                </svg>
+              </button>
+              {showFormatDropdown && (
+                <>
+                  <div
+                    className="dropdown-overlay"
+                    onClick={() => setShowFormatDropdown(false)}
+                  />
+                  <div className="format-dropdown-menu">
+                    {(isRingtoneMode ? RINGTONE_FORMAT_OPTIONS : OUTPUT_FORMAT_OPTIONS).map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleFormatSelect(option.value)}
+                        className={outputFormat === option.value ? "active" : ""}
+                      >
+                        <span>{option.label}</span>
+                        {outputFormat === option.value && (
+                          <svg width="14" height="13" viewBox="0 0 14 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.5633 0.173869C14.0196 0.484992 14.1374 1.10712 13.8262 1.56343L6.32623 12.5634C6.15848 12.8095 5.88982 12.9679 5.59335 12.9957C5.29688 13.0235 5.00345 12.9178 4.79289 12.7072L0.292893 8.2072C-0.0976311 7.81668 -0.0976311 7.18351 0.292893 6.79299C0.683417 6.40247 1.31658 6.40247 1.70711 6.79299L5.35368 10.4396L12.1738 0.43676C12.4849 -0.0195528 13.107 -0.137253 13.5633 0.173869Z" fill="currentColor"/>
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
-          )}
+          </div>
 
-          {generationError && (
-            <div className="generation-status error" role="alert">
-              {generationError}
+          {/* Waveform Section */}
+          <div className="waveform-section" ref={waveformSectionRef}>
+            {/* Time markers */}
+            <div className="time-markers-container">
+              {/* Time cue lines - every 10% */}
+              <div className="time-cue-lines-container">
+                {[...Array(11)].map((_, i) => (
+                  <div
+                    key={`cue-${i}`}
+                    className="time-cue-line"
+                    style={{ left: `${i * 10}%` }}
+                  />
+                ))}
+              </div>
+              <div className="time-markers">
+                <span>0:00.0</span>
+                <span>{totalDuration > 0 ? formatTime(totalDuration / 2) : "0:00.0"}</span>
+                <span>{totalDuration > 0 ? formatTime(totalDuration) : "0:00.0"}</span>
+              </div>
             </div>
-          )}
-        </div>
-        </div>
-      </div>
-    );
-  } else if (!hasCheckedToolOutput && !hasChatGptAudio) {
-    // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
-    return (
-      <div className="ringtone-editor">
-        <div className="upload-container">
-          <input
-            ref={fileInputRef}
-            id="audio-file-input"
-            type="file"
-            accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
-            onChange={handleFileUpload}
-            style={{ display: 'none' }}
-            aria-label="Upload audio file"
-          />
-          <div 
-            className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <svg className="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3"/>
-              <path d="M32 20V44M20 32L32 20L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <h2 className="upload-title">Upload Audio File</h2>
-            <p className="upload-description">
-              {isDraggingOver ? 'Drop your audio file here' : 'Drag and drop an audio file or choose one to edit and export'}
-            </p>
-            <label 
-              htmlFor="audio-file-input" 
-              className="upload-button"
-              onClick={(e) => {
-                // Programmatically trigger file input for better mobile app compatibility
-                e.preventDefault();
-                if (fileInputRef.current) {
-                  fileInputRef.current.click();
-                }
-              }}
+
+            {/* Trimmer line */}
+            <div
+                className="trimmer-line"
+                style={{ left: `${trimmerLinePosition}%` }}
+              />
+
+            {/* Start pin - positioned at section level to align with trimmer line */}
+            <svg
+              className="trim-pin start-pin"
+              style={{ left: `${startPinPosition}%` }}
+              width="60"
+              height="65"
+              viewBox="0 0 60 65"
+              onMouseDown={(e) => handleTrimPinStart('start', e)}
+              onTouchStart={(e) => handleTrimPinStart('start', e)}
             >
-              Select File
-            </label>
-            <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
-            {uploadError && (
-              <div className="upload-error" role="alert">
-                {uploadError}
+              <path
+                d="M 0 30 A 30 30 0 0 1 60 30 L 30 65 Z"
+                fill="var(--blue)"
+              />
+            </svg>
+
+            {/* End pin - positioned at section level to align with trimmer line */}
+            <svg
+              className="trim-pin end-pin"
+              style={{ left: `${endPinPosition}%` }}
+              width="60"
+              height="65"
+              viewBox="0 0 60 65"
+              onMouseDown={(e) => handleTrimPinStart('end', e)}
+              onTouchStart={(e) => handleTrimPinStart('end', e)}
+            >
+              <path
+                d="M 30 0 L 0 35 A 30 30 0 0 0 60 35 Z"
+                fill="var(--blue)"
+              />
+            </svg>
+
+            {/* Waveform container */}
+            <div
+              className="waveform-container"
+              ref={waveformRef}
+              onMouseDown={handleWaveformStart}
+              onTouchStart={handleWaveformStart}
+            >
+              {/* Background waveform */}
+              {isLoading ? (
+                <div className="waveform-loading">Loading audio...</div>
+              ) : (
+                <>
+                  <div className="waveform-background">
+                    {waveformData.map((height, index) => (
+                      <div
+                        key={index}
+                        className="waveform-bar background-bar"
+                        style={{ height: `${height * 100}%` }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Selected segment overlay */}
+                  <div className="waveform-selected">
+                    {waveformData.map((height, index) => {
+                      const position = index / waveformData.length;
+                      const isInRange = position >= startTrim && position <= endTrim;
+                      
+                      if (!isInRange) return null;
+                      
+                      // Calculate exact position to align with background bars
+                      // Use the same percentage distribution as flex (flex: 1 distributes evenly)
+                      const totalBars = waveformData.length;
+                      const barWidthPercent = 70 / totalBars;
+                      const leftPercent = (index / totalBars) * 100;
+                      
+                      return (
+                        <div
+                          key={`selected-${index}`}
+                          className="waveform-bar selected-bar"
+                          style={{
+                            height: `${height * 100}%`,
+                            position: 'absolute',
+                            left: `${leftPercent}%`,
+                            width: `${barWidthPercent}%`,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Trimmer label */}
+            <div className="trimmer-label">TRIMMER</div>
+          </div>
+
+          {/* Trim and Fade Controls */}
+          <div className="trim-controls">
+            {/* Start Section - Trim Start + Fade In */}
+            <div className="control-section start-section">
+              {/* Trim Start */}
+              <div className="trim-control">
+                <div className="trim-time-controls">
+                  <button
+                    className="trim-button"
+                    onClick={() => handleTrimStartChange(-0.1)}
+                    disabled={startTrim <= 0}
+                  >
+                    <svg width="16" height="3" viewBox="0 0 12 2" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M0 1C0 0.447715 0.447715 0 1 0H11C11.5523 0 12 0.447715 12 1C12 1.55228 11.5523 2 11 2H1C0.447715 2 0 1.55228 0 1Z" fill="currentColor"/>
+                    </svg>
+                  </button>
+                  <span className="trim-time">{formatTime(selectedStart)}</span>
+                  <button
+                    className="trim-button"
+                    onClick={() => handleTrimStartChange(0.1)}
+                    disabled={startTrim >= endTrim - 0.05}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M6 0C6.55228 0 7 0.447715 7 1V5H11C11.5523 5 12 5.44772 12 6C12 6.55228 11.5523 7 11 7H7V11C7 11.5523 6.55228 12 6 12C5.44772 12 5 11.5523 5 11V7H1C0.447715 7 0 6.55228 0 6C0 5.44772 0.447715 5 1 5H5V1C5 0.447715 5.44772 0 6 0Z" fill="currentColor"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Fade In */}
+              <div className="fade-control">
+                <div className="fade-toggle-container">
+                  <button
+                    className={`toggle-switch ${fadeInEnabled ? "enabled" : ""}`}
+                    onClick={() => {
+                      setFadeInEnabled((current) => {
+                        const next = !current;
+                        if (next) {
+                          const selectionDuration = selectedEnd - selectedStart;
+                          setFadeInTime((prev) =>
+                            prev > 0 ? Math.min(prev, selectionDuration) : Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0))
+                          );
+                        } else {
+                          setFadeInTime(0);
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <div className="toggle-slider" />
+                  </button>
+                  <span className="fade-label">Fade In</span>
+                </div>
+              </div>
+            </div>
+
+            {/* End Section - Trim End + Fade Out */}
+            <div className="control-section end-section">
+              {/* Trim End */}
+              <div className="trim-control">
+                <div className="trim-time-controls">
+                  <button
+                    className="trim-button"
+                    onClick={() => handleTrimEndChange(-0.1)}
+                    disabled={endTrim <= startTrim + 0.05}
+                  >
+                    <svg width="16" height="3" viewBox="0 0 12 2" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M0 1C0 0.447715 0.447715 0 1 0H11C11.5523 0 12 0.447715 12 1C12 1.55228 11.5523 2 11 2H1C0.447715 2 0 1.55228 0 1Z" fill="currentColor"/>
+                    </svg>
+                  </button>
+                  <span className="trim-time">{formatTime(selectedEnd)}</span>
+                  <button
+                    className="trim-button"
+                    onClick={() => handleTrimEndChange(0.1)}
+                    disabled={endTrim >= 1}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M6 0C6.55228 0 7 0.447715 7 1V5H11C11.5523 5 12 5.44772 12 6C12 6.55228 11.5523 7 11 7H7V11C7 11.5523 6.55228 12 6 12C5.44772 12 5 11.5523 5 11V7H1C0.447715 7 0 6.55228 0 6C0 5.44772 0.447715 5 1 5H5V1C5 0.447715 5.44772 0 6 0Z" fill="currentColor"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Fade Out */}
+              <div className="fade-control">
+                <div className="fade-toggle-container">
+                <span className="fade-label">Fade Out</span>
+                  <button
+                    className={`toggle-switch ${fadeOutEnabled ? "enabled" : ""}`}
+                    onClick={() => {
+                      setFadeOutEnabled((current) => {
+                        const next = !current;
+                        if (next) {
+                          const selectionDuration = selectedEnd - selectedStart;
+                          setFadeOutTime((prev) =>
+                            prev > 0 ? Math.min(prev, selectionDuration) : Math.min(DEFAULT_FADE_DURATION, Math.max(selectionDuration, 0))
+                          );
+                        } else {
+                          setFadeOutTime(0);
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <div className="toggle-slider" />
+                  </button>      
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Submit Container */}
+          <div className="submit-container"> 
+            {/* Rights Confirmation */}
+            <div className="rights-confirmation">
+              <button
+                className={`toggle-switch ${rightsConfirmed ? "enabled" : ""}`}
+                onClick={() => setRightsConfirmed(!rightsConfirmed)}
+              >
+                <div className="toggle-slider" />
+              </button>
+              <span className="rights-text">I own the rights to use this audio.</span>
+            </div>
+
+            {/* Export Button */}
+            <button
+              className="generate-button"
+              onClick={handleExportAudio}
+              disabled={!rightsConfirmed || isLoading || isGenerating}
+              >
+              {isGenerating ? (
+                <>
+                  <span className="spinner" aria-hidden="true" />
+                  Exporting...
+                </>
+              ) : (
+                "Export audio"
+              )}
+            </button>
+
+            {generationSuccess && (
+              <div className="generation-status success">
+                {downloadUrl ? (
+                  <>
+                    Your audio{" "}
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ textDecoration: "underline", color: "inherit" }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.open(downloadUrl, "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      download link
+                    </a>{" "}
+                    is ready.
+                  </>
+                ) : (
+                  generationSuccess
+                )}
+              </div>
+            )}
+
+            {generationError && (
+              <div className="generation-status error" role="alert">
+                {generationError}
               </div>
             )}
           </div>
+          </div>
         </div>
-      </div>
-    );
+      );
+    } else {
+      // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
+      return (
+        <div className="ringtone-editor">
+          <div className="upload-container">
+            <input
+              ref={fileInputRef}
+              id="audio-file-input"
+              type="file"
+              accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+              aria-label="Upload audio file"
+            />
+            <div 
+              className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <svg className="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3"/>
+                <path d="M32 20V44M20 32L32 20L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <h2 className="upload-title">Upload Audio File</h2>
+              <p className="upload-description">
+                {isDraggingOver ? 'Drop your audio file here' : 'Drag and drop an audio file or choose one to edit and export'}
+              </p>
+              <label 
+                htmlFor="audio-file-input" 
+                className="upload-button"
+                onClick={(e) => {
+                  // Programmatically trigger file input for better mobile app compatibility
+                  e.preventDefault();
+                  if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }}
+              >
+                Select File
+              </label>
+              <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
+              {uploadError && (
+                <div className="upload-error" role="alert">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
   } else {
     // Show loading state while waiting for toolOutput
     return (
