@@ -1187,8 +1187,9 @@ export function AudioEditor() {
       }
 
       const totalDuration = audioBufferRef.current.duration;
-      const startTime = selectedStart * totalDuration;
-      const duration = (selectedEnd - selectedStart) * totalDuration;
+      // startTrim and endTrim are normalized (0-1), convert to seconds
+      const startTime = startTrim * totalDuration;
+      const duration = (endTrim - startTrim) * totalDuration;
 
       console.log("📤 [AUDIO EXPORT] Preparing server-side processing:", {
         audioSource: audioSource.isUploaded ? "uploaded file" : "external URL",
