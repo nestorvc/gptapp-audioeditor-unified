@@ -693,11 +693,18 @@ export async function generatePresignedUploadUrl(fileName: string, contentType: 
   const sanitizedFileName = sanitizeFileName(fileName.replace(/\.[^/.]+$/, ""), DEFAULT_TMP_PREFIX);
   const fileKey = `${keyPrefixNormalized ? `${keyPrefixNormalized}/` : ""}${Date.now()}-${randomUUID()}-${sanitizedFileName}${fileExtension}`;
 
-  const command = new PutObjectCommand({
+  const putObjectInput: PutObjectCommandInput = {
     Bucket: s3Bucket,
     Key: fileKey,
     ContentType: contentType,
-  });
+  };
+
+  // Add ACL if configured (same as regular uploads)
+  if (s3ObjectAcl && s3ObjectAcl.length > 0) {
+    putObjectInput.ACL = s3ObjectAcl as PutObjectCommandInput["ACL"];
+  }
+
+  const command = new PutObjectCommand(putObjectInput);
 
   const uploadUrl = await getSignedUrl(s3Client as any, command as any, { expiresIn: 3600 }); // 1 hour expiry
 
