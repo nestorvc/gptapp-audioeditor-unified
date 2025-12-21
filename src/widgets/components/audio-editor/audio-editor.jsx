@@ -355,6 +355,7 @@ export function AudioEditor() {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [hasCheckedToolOutput, setHasCheckedToolOutput] = useState(false);
   const sendFollowUpMessage = useSendFollowUpMessage();
 
   useEffect(() => {
@@ -386,7 +387,20 @@ export function AudioEditor() {
       hasToolInput: !!window.openai?.toolInput,
     });
 
-  }, []);
+    // If toolOutput is already available, mark as checked immediately
+    if (toolOutput !== null && toolOutput !== undefined) {
+      setHasCheckedToolOutput(true);
+      return;
+    }
+
+    // Otherwise, give toolOutput a moment to populate before showing upload screen
+    // This prevents flashing the upload screen when ChatGPT provides audio
+    const checkTimer = setTimeout(() => {
+      setHasCheckedToolOutput(true);
+    }, 150); // Small delay to allow toolOutput to populate
+
+    return () => clearTimeout(checkTimer);
+  }, [toolOutput]);
 
   // Format duration as MM:SS
   const formatDuration = (seconds) => {
@@ -1558,7 +1572,7 @@ export function AudioEditor() {
     }
   };
 
-  useEffect(() => {
+  useEffect(() => {   
     if (isDraggingStart || isDraggingEnd || isDraggingTrimmer) {
       // Mouse events
       document.addEventListener("mousemove", handleMove);
@@ -1577,7 +1591,25 @@ export function AudioEditor() {
       };
     }
   }, [isDraggingStart, isDraggingEnd, isDraggingTrimmer]);
+
   const hasChatGptAudio = toolOutput?.audioUrl && !isChatConversationFileUrl(toolOutput.audioUrl);
+  console.log('hasChatGptAudio?', hasChatGptAudio, 'hasCheckedToolOutput?', hasCheckedToolOutput);
+
+  // Wait for toolOutput to be checked before showing upload screen
+  // This prevents flashing the upload screen when ChatGPT provides audio
+  if (!hasCheckedToolOutput) {
+    // Show loading state while waiting for toolOutput
+    return (
+      <div className="ringtone-editor">
+        <div className="upload-container">
+          <div className="loading-content" style={{ padding: '48px' }}>
+            <div className="loading-spinner-large"></div>
+            <p className="loading-text">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Show upload UI ONLY if no audio source is available AND no ChatGPT audio URL exists
   // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
