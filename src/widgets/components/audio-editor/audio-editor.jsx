@@ -1703,7 +1703,11 @@ export function AudioEditor() {
             </svg>
             <h2 className="upload-title">Upload Audio File</h2>
             <p className="upload-description">
-              {isDraggingOver ? 'Drop your audio file here' : '<b>Drag and drop</b> 🫳 an audio file or <b>choose one</b> to edit and export'}
+              {isDraggingOver ? 'Drop your audio file here' : (
+                <>
+                  <b>Drag and drop</b> 🫳 an audio file or <b>choose one</b> to edit and export
+                </>
+              )}
             </p>
             <label 
               htmlFor="audio-file-input" 
