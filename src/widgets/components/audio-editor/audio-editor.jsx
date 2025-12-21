@@ -1702,7 +1702,11 @@ export function AudioEditor() {
   if (!audioSource) {
     return (
       <div className="ringtone-editor">
-        <div className="upload-container">
+        {/* Header */}
+        <div className="ringtone-header"></div>
+        
+        {/* Waveform Section - Upload UI */}
+        <div className="waveform-container">
           <input
             ref={fileInputRef}
             id="audio-file-input"
@@ -1730,19 +1734,6 @@ export function AudioEditor() {
                 </>
               )}
             </p>
-            <label 
-              htmlFor="audio-file-input" 
-              className="upload-button"
-              onClick={(e) => {
-                // Programmatically trigger file input for better mobile app compatibility
-                e.preventDefault();
-                if (fileInputRef.current) {
-                  fileInputRef.current.click();
-                }
-              }}
-            >
-              Select File or Drag-n-drop
-            </label>
             <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
             {uploadError && (
               <div className="upload-error" role="alert">
@@ -1750,6 +1741,21 @@ export function AudioEditor() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Submit Container - Upload Button */}
+        <div className="submit-container">
+          <button 
+            className="generate-button"
+            onClick={(e) => {
+              e.preventDefault();
+              if (fileInputRef.current) {
+                fileInputRef.current.click();
+              }
+            }}
+          >
+            Select File or Drag-n-drop
+          </button>
         </div>
       </div>
     );
