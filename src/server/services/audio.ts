@@ -35,7 +35,7 @@ console.log("process.env.AWS_REGION", process.env.AWS_REGION);
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import ffmpeg from "fluent-ffmpeg";
-import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -344,6 +344,48 @@ async function uploadAudioToS3({
     downloadUrl,
     fileName: `${downloadName}${extension}`,
   };
+}
+
+// deleteFromS3 - Deletes a file from S3 by URL
+async function deleteFromS3(audioUrl: string): Promise<void> {
+  if (!s3Client || !s3Bucket) {
+    throw new Error("S3 configuration is missing on the server.");
+  }
+
+  try {
+    // Parse the S3 URL to extract the object key
+    const urlObj = new URL(audioUrl);
+    let objectKey = urlObj.pathname.replace(/^\//, ""); // Remove leading slash
+    
+    // Handle custom domain (S3_PUBLIC_BASE_URL) - object key is in pathname
+    // Handle S3 domain - object key is in pathname
+    // Only delete if it's from our bucket and in the uploads folder
+    const isOurBucket = 
+      urlObj.hostname.includes(s3Bucket) || 
+      urlObj.hostname === `${s3Bucket}.s3.${s3Region}.amazonaws.com` ||
+      urlObj.hostname === `s3.${s3Region}.amazonaws.com` ||
+      (s3PublicBaseUrl && urlObj.hostname === new URL(s3PublicBaseUrl).hostname);
+    
+    const isUploadsFolder = objectKey.startsWith("uploads/");
+    
+    if (isOurBucket && isUploadsFolder) {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: s3Bucket,
+        Key: objectKey,
+      }));
+      console.log("[S3 Cleanup] Deleted temporary upload file:", objectKey);
+    } else {
+      console.log("[S3 Cleanup] Skipping deletion - not from our uploads folder:", {
+        audioUrl,
+        objectKey,
+        isOurBucket,
+        isUploadsFolder,
+      });
+    }
+  } catch (error) {
+    // Log but don't throw - cleanup failures shouldn't break the main flow
+    console.warn("[S3 Cleanup] Failed to delete temporary file:", audioUrl, error);
+  }
 }
 
 /* ----------------------------- MAIN FUNCTIONS ----------------------------- */
@@ -657,6 +699,9 @@ export async function processAudioFromUrl({
       extension,
       config: s3UploadConfig,
     });
+
+    // Delete the temporary uploaded file from /uploads folder if it's from our S3 bucket
+    await deleteFromS3(audioUrl);
 
     return {
       downloadUrl,

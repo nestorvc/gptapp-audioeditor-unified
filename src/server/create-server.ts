@@ -89,12 +89,14 @@ function loadWidgetHtml(componentName: string): string {
     }
   })();
 
-  // Inject API base URL from environment variable (for production)
+  // Inject API base URL and DEBUG flag from environment variables (for production)
+  const debugFlag = process.env.DEBUG ?? "true"; // Default to true (logging enabled)
   
   const html = `
 <div id="${componentName}-root"></div>
 ${css ? `<style>${css}</style>` : ""}
 <script>window.__API_BASE_URL__ = ${JSON.stringify(apiBaseUrl)};</script>
+<script>window.__DEBUG__ = ${JSON.stringify(debugFlag)};</script>
 <script type="module">${js}</script>
   `.trim();
 

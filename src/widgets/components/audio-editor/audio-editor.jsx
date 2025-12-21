@@ -11,6 +11,23 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./audio-editor.css";
 import { useToolOutput, useSendFollowUpMessage, useOpenAIGlobals } from "../../hooks/useOpenAI";
 
+// Debug utility - only logs if DEBUG is not 'false'
+// Checks: window.__DEBUG__, import.meta.env.DEBUG, or import.meta.env.VITE_DEBUG
+const DEBUG = (() => {
+  if (typeof window !== 'undefined' && window.__DEBUG__ === 'false') {
+    return false;
+  }
+  if (import.meta.env?.DEBUG === 'false' || import.meta.env?.VITE_DEBUG === 'false') {
+    return false;
+  }
+  return true; // Default to logging enabled
+})();
+const debugLog = (...args) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const sanitizeFileName = (rawName, fallback = "audio") => {
@@ -360,7 +377,7 @@ export function AudioEditor() {
 
   useEffect(() => {
     // Log only serializable properties to avoid DataCloneError
-    console.log('🔍 [COMPONENT MOUNT] window.openai available:', {
+    debugLog('🔍 [COMPONENT MOUNT] window.openai available:', {
       windowOpenai: window.openai,
       hasOpenai: !!window.openai,
       availableKeys: window.openai ? Object.keys(window.openai).filter(key => typeof window.openai[key] !== 'function') : [],
@@ -406,18 +423,42 @@ export function AudioEditor() {
   // Detect audio format from URL or file
   const detectAudioFormat = (url, file) => {
     if (file && file.name) {
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      if (ext) {
+      const fileName = file.name;
+      const lastDot = fileName.lastIndexOf('.');
+      if (lastDot > 0 && lastDot < fileName.length - 1) {
+        const ext = fileName.substring(lastDot + 1).toLowerCase();
         const formatMap = { mp3: 'MP3', wav: 'WAV', m4a: 'M4A', m4r: 'M4R', flac: 'FLAC', ogg: 'OGG', aac: 'AAC', webm: 'WebM' };
         return formatMap[ext] || ext.toUpperCase();
       }
     }
     if (url) {
       const urlWithoutQuery = url.split('?')[0];
-      const ext = urlWithoutQuery.split('.').pop()?.toLowerCase();
-      if (ext) {
-        const formatMap = { mp3: 'MP3', wav: 'WAV', m4a: 'M4A', m4r: 'M4R', flac: 'FLAC', ogg: 'OGG', aac: 'AAC', webm: 'WebM' };
-        return formatMap[ext] || ext.toUpperCase();
+      // Extract the pathname and get the last segment
+      try {
+        const urlObj = new URL(urlWithoutQuery);
+        const pathname = urlObj.pathname;
+        const fileName = pathname.split('/').pop() || '';
+        const lastDot = fileName.lastIndexOf('.');
+        if (lastDot > 0 && lastDot < fileName.length - 1) {
+          const ext = fileName.substring(lastDot + 1).toLowerCase();
+          // Only return if it's a valid audio extension (not too long, common audio formats)
+          if (ext.length <= 5 && /^[a-z0-9]+$/i.test(ext)) {
+            const formatMap = { mp3: 'MP3', wav: 'WAV', m4a: 'M4A', m4r: 'M4R', flac: 'FLAC', ogg: 'OGG', aac: 'AAC', webm: 'WebM' };
+            return formatMap[ext] || ext.toUpperCase();
+          }
+        }
+      } catch {
+        // If URL parsing fails, try simple extraction
+        const lastDot = urlWithoutQuery.lastIndexOf('.');
+        if (lastDot > 0) {
+          const afterDot = urlWithoutQuery.substring(lastDot + 1);
+          // Check if it looks like a file extension (short, alphanumeric, before any query params)
+          const ext = afterDot.split(/[?#]/)[0].toLowerCase();
+          if (ext.length <= 5 && /^[a-z0-9]+$/i.test(ext)) {
+            const formatMap = { mp3: 'MP3', wav: 'WAV', m4a: 'M4A', m4r: 'M4R', flac: 'FLAC', ogg: 'OGG', aac: 'AAC', webm: 'WebM' };
+            return formatMap[ext] || ext.toUpperCase();
+          }
+        }
       }
     }
     return "";
@@ -444,7 +485,9 @@ export function AudioEditor() {
     }
     
     if (audioFormat) {
-      parts.push(`Format: ${audioFormat}`);
+      // Display format with dot prefix (e.g., ".mp3")
+      const formatWithDot = audioFormat.startsWith('.') ? audioFormat : `.${audioFormat.toLowerCase()}`;
+      parts.push(`Format: ${formatWithDot}`);
     }
     
     return parts.join(" • ");
@@ -689,7 +732,7 @@ export function AudioEditor() {
 
   // Handle file upload
   const handleFileUpload = (event) => {
-    console.log('📤 [FILE UPLOAD] File upload event triggered', {
+    debugLog('📤 [FILE UPLOAD] File upload event triggered', {
       timestamp: new Date().toISOString(),
       filesCount: event.target.files?.length || 0
     });
@@ -725,7 +768,7 @@ export function AudioEditor() {
       return;
     }
 
-    console.log('📄 [FILE UPLOAD] File selected:', {
+    debugLog('📄 [FILE UPLOAD] File selected:', {
       name: file.name,
       size: file.size,
       sizeMB: (file.size / (1024 * 1024)).toFixed(2),
@@ -738,7 +781,7 @@ export function AudioEditor() {
     const validExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.webm'];
     const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
     
-    console.log('🔍 [FILE UPLOAD] Validating file:', {
+    debugLog('🔍 [FILE UPLOAD] Validating file:', {
       fileType: file.type,
       fileExtension,
       isValidType: validAudioTypes.includes(file.type),
@@ -757,9 +800,9 @@ export function AudioEditor() {
     }
 
     // Create object URL for the uploaded file
-    console.log('🔗 [FILE UPLOAD] Creating object URL...');
+    debugLog('🔗 [FILE UPLOAD] Creating object URL...');
     const objectUrl = URL.createObjectURL(file);
-    console.log('✅ [FILE UPLOAD] Object URL created:', {
+    debugLog('✅ [FILE UPLOAD] Object URL created:', {
       objectUrl,
       fileName: file.name.replace(/\.[^/.]+$/, "")
     });
@@ -768,7 +811,7 @@ export function AudioEditor() {
     setUploadedFileName(file.name.replace(/\.[^/.]+$/, "")); // Remove extension
     setUploadedFile(file); // Store File object to read directly (avoids CSP fetch issues)
     
-    console.log('💾 [FILE UPLOAD] State updated - file ready for processing');
+    debugLog('💾 [FILE UPLOAD] State updated - file ready for processing');
     
     // Reset file input
     if (fileInputRef.current) {
@@ -792,13 +835,13 @@ export function AudioEditor() {
 
     // Note: window.openai is a Proxy object and cannot be cloned/logged directly
     // Log only available file-related properties if needed
-    console.log('🔍 [AUDIO LOAD] Checking for file access:', {
+    debugLog('🔍 [AUDIO LOAD] Checking for file access:', {
       hasOpenai: !!window.openai,
       hasFilesAPI: !!(window.openai && window.openai.files),
       audioSourceType: audioSource.isUploaded ? 'uploaded' : 'external',
     });
 
-    console.log('🎵 [AUDIO LOAD] Starting audio load process:', {
+    debugLog('🎵 [AUDIO LOAD] Starting audio load process:', {
       timestamp: new Date().toISOString(),
       source: audioSource.name,
       url: audioSource.url,
@@ -808,14 +851,14 @@ export function AudioEditor() {
     const loadAudio = async () => {
       try {
         setIsLoading(true);
-        console.log('⏳ [AUDIO LOAD] Loading audio file...');
+        debugLog('⏳ [AUDIO LOAD] Loading audio file...');
         
         let arrayBuffer;
         const startTime = performance.now();
         
         // Use FileReader for uploaded files to avoid CSP issues with blob URLs
         if (audioSource.isUploaded && audioSource.file) {
-          console.log('📖 [AUDIO LOAD] Using FileReader for uploaded file (avoiding CSP fetch issue)');
+          debugLog('📖 [AUDIO LOAD] Using FileReader for uploaded file (avoiding CSP fetch issue)');
           // Set file size and format from uploaded file
           setFileSize(audioSource.file.size);
           setAudioFormat(detectAudioFormat(null, audioSource.file));
@@ -825,7 +868,7 @@ export function AudioEditor() {
             const reader = new FileReader();
             reader.onload = (e) => {
               const fileReadTime = ((performance.now() - fileReaderStartTime) / 1000).toFixed(2);
-              console.log('📥 [AUDIO LOAD] File read via FileReader:', {
+              debugLog('📥 [AUDIO LOAD] File read via FileReader:', {
                 sizeBytes: e.target.result.byteLength,
                 sizeMB: (e.target.result.byteLength / (1024 * 1024)).toFixed(2),
                 readTimeSeconds: fileReadTime
@@ -837,11 +880,11 @@ export function AudioEditor() {
           });
         } else {
           // Use fetch for external URLs (toolOutput)
-          console.log('🌐 [AUDIO LOAD] Using fetch for external URL');
+          debugLog('🌐 [AUDIO LOAD] Using fetch for external URL');
           const fetchStartTime = performance.now();
           const response = await fetch(audioSource.url);
           const fetchTime = ((performance.now() - fetchStartTime) / 1000).toFixed(2);
-          console.log('📥 [AUDIO LOAD] File fetched:', {
+          debugLog('📥 [AUDIO LOAD] File fetched:', {
             status: response.status,
             statusText: response.statusText,
             contentType: response.headers.get('content-type'),
@@ -852,7 +895,7 @@ export function AudioEditor() {
           const arrayBufferStartTime = performance.now();
           arrayBuffer = await response.arrayBuffer();
           const arrayBufferTime = ((performance.now() - arrayBufferStartTime) / 1000).toFixed(2);
-          console.log('💾 [AUDIO LOAD] ArrayBuffer created:', {
+          debugLog('💾 [AUDIO LOAD] ArrayBuffer created:', {
             sizeBytes: arrayBuffer.byteLength,
             sizeMB: (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2),
             conversionTimeSeconds: arrayBufferTime
@@ -860,7 +903,38 @@ export function AudioEditor() {
           
           // Set file size and format from fetched response
           setFileSize(arrayBuffer.byteLength);
-          setAudioFormat(detectAudioFormat(audioSource.url, null));
+          
+          // Try to detect format from Content-Type header first, then URL
+          const contentType = response.headers.get('content-type');
+          let detectedFormat = "";
+          if (contentType) {
+            const mimeToFormat = {
+              'audio/mpeg': 'MP3',
+              'audio/mp3': 'MP3',
+              'audio/wav': 'WAV',
+              'audio/wave': 'WAV',
+              'audio/x-wav': 'WAV',
+              'audio/m4a': 'M4A',
+              'audio/x-m4a': 'M4A',
+              'audio/mp4': 'M4A',
+              'audio/m4r': 'M4R',
+              'audio/flac': 'FLAC',
+              'audio/x-flac': 'FLAC',
+              'audio/ogg': 'OGG',
+              'audio/opus': 'OGG',
+              'audio/aac': 'AAC',
+              'audio/webm': 'WebM',
+            };
+            const baseType = contentType.split(';')[0].toLowerCase();
+            detectedFormat = mimeToFormat[baseType] || "";
+          }
+          
+          // Fallback to URL-based detection if Content-Type didn't work
+          if (!detectedFormat) {
+            detectedFormat = detectAudioFormat(audioSource.url, null);
+          }
+          
+          setAudioFormat(detectedFormat);
         }
         
         const audioContextStartTime = performance.now();
@@ -868,7 +942,7 @@ export function AudioEditor() {
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         const decodeTime = ((performance.now() - audioContextStartTime) / 1000).toFixed(2);
         
-        console.log('🎼 [AUDIO LOAD] Audio decoded:', {
+        debugLog('🎼 [AUDIO LOAD] Audio decoded:', {
           duration: audioBuffer.duration,
           durationFormatted: `${Math.floor(audioBuffer.duration / 60)}:${(audioBuffer.duration % 60).toFixed(2)}`,
           sampleRate: audioBuffer.sampleRate,
@@ -886,7 +960,7 @@ export function AudioEditor() {
         const waveformStartTime = performance.now();
         const waveform = await generateWaveform(audioBuffer);
         const waveformTime = ((performance.now() - waveformStartTime) / 1000).toFixed(2);
-        console.log('📊 [AUDIO LOAD] Waveform generated:', {
+        debugLog('📊 [AUDIO LOAD] Waveform generated:', {
           samples: waveform.length,
           waveformTimeSeconds: waveformTime
         });
@@ -896,7 +970,7 @@ export function AudioEditor() {
         // Note: This may fail with CSP errors for blob URLs, but it's non-critical
         let title = null;
         try {
-          console.log('🔍 [AUDIO LOAD] Attempting to extract metadata...');
+          debugLog('🔍 [AUDIO LOAD] Attempting to extract metadata...');
           const audioElement = document.createElement('audio');
           audioElement.src = audioSource.url;
           
@@ -908,7 +982,7 @@ export function AudioEditor() {
               // Try to get title from metadata if available
               // Note: Browser support for metadata is limited
               title = audioElement.title || null;
-              console.log('📋 [AUDIO LOAD] Metadata extracted:', {
+              debugLog('📋 [AUDIO LOAD] Metadata extracted:', {
                 title,
                 duration: audioElement.duration,
                 readyState: audioElement.readyState
@@ -917,23 +991,23 @@ export function AudioEditor() {
             });
             audioElement.addEventListener('error', (e) => {
               // Don't log as error - CSP restrictions are expected for blob URLs
-              console.log('ℹ️ [AUDIO LOAD] Metadata extraction skipped (CSP or browser limitation)');
+              debugLog('ℹ️ [AUDIO LOAD] Metadata extraction skipped (CSP or browser limitation)');
               resolve(); // Resolve instead of reject - metadata is optional
             });
             // Fallback timeout
             setTimeout(() => {
-              console.log('⏱️ [AUDIO LOAD] Metadata extraction timeout');
+              debugLog('⏱️ [AUDIO LOAD] Metadata extraction timeout');
               resolve();
             }, 100);
           });
         } catch (e) {
           // Silently fail - metadata extraction is optional
-          console.log('ℹ️ [AUDIO LOAD] Metadata extraction skipped:', e.message);
+          debugLog('ℹ️ [AUDIO LOAD] Metadata extraction skipped:', e.message);
         }
         
         // Use metadata title if available, otherwise use filename from source, fallback to "Audio File"
         const displayName = title || audioSource.name || "Audio File";
-        console.log('✏️ [AUDIO LOAD] Setting track name:', {
+        debugLog('✏️ [AUDIO LOAD] Setting track name:', {
           displayName,
           source: title ? 'metadata' : 'filename'
         });
@@ -961,7 +1035,7 @@ export function AudioEditor() {
           const startSecs = (startSeconds % 60).toFixed(1);
           const endMins = Math.floor(endSeconds / 60);
           const endSecs = (endSeconds % 60).toFixed(1);
-          console.log('🎵 [RINGTONE] Auto-selected best 30-second segment:', {
+          debugLog('🎵 [RINGTONE] Auto-selected best 30-second segment:', {
             start: bestSegment.start,
             end: bestSegment.end,
             startTime: `${startMins}:${startSecs.padStart(4, "0")}`,
@@ -980,7 +1054,7 @@ export function AudioEditor() {
         }
         
         const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
-        console.log('✅ [AUDIO LOAD] Audio loaded successfully!', {
+        debugLog('✅ [AUDIO LOAD] Audio loaded successfully!', {
           trackName: displayName,
           duration: audioBuffer.duration,
           trimStart: finalStartTrim,
@@ -1000,7 +1074,7 @@ export function AudioEditor() {
         audioBufferRef.current = null;
         // Fallback to filename if everything fails, or "Audio File" if name is empty
         const fallbackName = audioSource.name || "Audio File";
-        console.log('🔄 [AUDIO LOAD] Using fallback name:', fallbackName);
+        debugLog('🔄 [AUDIO LOAD] Using fallback name:', fallbackName);
         setTrackName(fallbackName);
         setIsLoading(false);
       }
@@ -1191,7 +1265,7 @@ export function AudioEditor() {
       const startTime = startTrim * totalDuration;
       const duration = (endTrim - startTrim) * totalDuration;
 
-      console.log("📤 [AUDIO EXPORT] Preparing server-side processing:", {
+      debugLog("📤 [AUDIO EXPORT] Preparing server-side processing:", {
         audioSource: audioSource.isUploaded ? "uploaded file" : "external URL",
         startTime: `${startTime.toFixed(2)}s`,
         duration: `${duration.toFixed(2)}s`,
@@ -1206,7 +1280,7 @@ export function AudioEditor() {
 
       if (audioSource.isUploaded && audioSource.file) {
         // Upload file directly to S3 first, then send S3 URL + processing parameters
-        console.log("📤 [AUDIO EXPORT] Uploading file to S3 first...");
+        debugLog("📤 [AUDIO EXPORT] Uploading file to S3 first...");
         
         // Get presigned URL from server
         const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
@@ -1239,7 +1313,7 @@ export function AudioEditor() {
           throw new Error("Failed to upload file to S3");
         }
 
-        console.log("✅ [AUDIO EXPORT] File uploaded to S3:", publicUrl);
+        debugLog("✅ [AUDIO EXPORT] File uploaded to S3:", publicUrl);
 
         // Send S3 URL + processing parameters to server
         const params = new URLSearchParams();
@@ -1326,12 +1400,12 @@ export function AudioEditor() {
         await sendFollowUpMessage(
           `Audio generated successfully! Download it here: ${resolvedDownloadUrl}`
         );
-        console.log("💬 [FOLLOW UP MESSAGE] Sent follow-up message with S3 download URL.");
+        debugLog("💬 [FOLLOW UP MESSAGE] Sent follow-up message with S3 download URL.");
       } catch (messageError) {
         console.warn("⚠️ [FOLLOW UP MESSAGE] Failed to send follow-up message:", messageError);
       }
 
-      console.log("🔗 [AUDIO DOWNLOAD] Resolved download URL:", resolvedDownloadUrl);
+      debugLog("🔗 [AUDIO DOWNLOAD] Resolved download URL:", resolvedDownloadUrl);
     } catch (error) {
       console.error("❌ [AUDIO GENERATE] Failed to export audio:", error);
       const message =
