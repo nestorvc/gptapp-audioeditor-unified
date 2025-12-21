@@ -112,6 +112,27 @@ export const createServer = () => {
   });
 
   const audioEditorUri = "ui://widget/audio-editor.html";
+  
+  // Build S3 domain patterns - CSP doesn't support wildcards in the middle (e.g., *.s3.*.amazonaws.com)
+  // So we need to construct specific patterns based on bucket name and region
+  const s3Bucket = process.env.S3_BUCKET;
+  const s3Region = process.env.AWS_REGION;
+  const s3Domains: string[] = [];
+  
+  if (s3Bucket && s3Region) {
+    // Virtual-hosted style: bucket.s3.region.amazonaws.com
+    const virtualHostedDomain = `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`;
+    s3Domains.push(virtualHostedDomain);
+    // Path-style: s3.region.amazonaws.com
+    const pathStyleDomain = `https://s3.${s3Region}.amazonaws.com`;
+    s3Domains.push(pathStyleDomain);
+    console.log("[CSP] S3 domains configured:", { virtualHostedDomain, pathStyleDomain });
+  } else {
+    console.warn("[CSP] S3_BUCKET or AWS_REGION not set, using fallback S3 domain");
+  }
+  // Fallback patterns (less specific but work for any S3 bucket)
+  s3Domains.push("https://*.s3.amazonaws.com");
+  
   const cspMeta = {
     connect_domains: [
       "https://*.oaiusercontent.com",
@@ -120,10 +141,9 @@ export const createServer = () => {
       "https://files.openai.com",
       "https://cdn.openai.com",
       "https://*.blob.core.windows.net",
-      "https://*.s3.*.amazonaws.com",
-      "https://*.s3.amazonaws.com",
+      ...s3Domains,
       process.env.CONNECT_DOMAIN,
-    ],
+    ].filter(Boolean),
     resource_domains: [
       "https://*.oaiusercontent.com",
       "https://*.oaistatic.com",
@@ -131,11 +151,12 @@ export const createServer = () => {
       "https://cdn.openai.com",
       "https://chatgpt.com",
       "https://*.blob.core.windows.net",
-      "https://*.s3.*.amazonaws.com",
-      "https://*.s3.amazonaws.com",
+      ...s3Domains,
       process.env.CONNECT_DOMAIN,
-    ],
+    ].filter(Boolean),
   };
+  
+  console.log("[CSP] Final CSP configuration:", JSON.stringify(cspMeta, null, 2));
 
   /* ----------------------------- MCP RESOURCES ----------------------------- */
   /* Audio Editor */
