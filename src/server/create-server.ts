@@ -145,6 +145,7 @@ export const createServer = () => {
       "https://files.openai.com",
       "https://cdn.openai.com",
       "https://*.blob.core.windows.net",
+      "https://www.googletagmanager.com", // GA4 script loading and API calls
       ...s3Domains,
       process.env.CONNECT_DOMAIN,
     ].filter(Boolean),
@@ -155,6 +156,7 @@ export const createServer = () => {
       "https://cdn.openai.com",
       "https://chatgpt.com",
       "https://*.blob.core.windows.net",
+      "https://www.googletagmanager.com", // GA4 script loading
       ...s3Domains,
       process.env.CONNECT_DOMAIN,
     ].filter(Boolean),
