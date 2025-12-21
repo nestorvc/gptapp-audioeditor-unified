@@ -856,20 +856,30 @@ export function AudioEditor() {
   // Handle initial loading overlay fade out
   useEffect(() => {
     const audioSource = getAudioSource();
+    const hasChatGptAudio = toolOutput?.audioUrl && !isChatConversationFileUrl(toolOutput.audioUrl);
     
-    if (!audioSource) {
-      // No audio source - fade out loading overlay after a short delay
-      const timer = setTimeout(() => {
-        setShowInitialLoading(false);
-      }, 300); // Small delay for smooth transition
-      return () => clearTimeout(timer);
-    } else {
-      // Audio source exists - fade out only when audio is fully loaded
+    // If ChatGPT provided audio, always wait for it to load before fading out
+    if (hasChatGptAudio) {
+      // Audio from ChatGPT - fade out only when audio is fully loaded
       if (!isLoading) {
         // Audio has finished loading, fade out the overlay
         const timer = setTimeout(() => {
           setShowInitialLoading(false);
         }, 200); // Small delay for smooth transition
+        return () => clearTimeout(timer);
+      }
+    } else if (!audioSource) {
+      // No audio source at all - fade out loading overlay after a short delay
+      const timer = setTimeout(() => {
+        setShowInitialLoading(false);
+      }, 300); // Small delay for smooth transition
+      return () => clearTimeout(timer);
+    } else {
+      // User uploaded file - fade out when loaded
+      if (!isLoading) {
+        const timer = setTimeout(() => {
+          setShowInitialLoading(false);
+        }, 200);
         return () => clearTimeout(timer);
       }
     }
@@ -1602,9 +1612,11 @@ export function AudioEditor() {
   }, [isDraggingStart, isDraggingEnd, isDraggingTrimmer]);
 
   const audioSource = getAudioSource();
+  const hasChatGptAudio = toolOutput?.audioUrl && !isChatConversationFileUrl(toolOutput.audioUrl);
 
-  // Show upload UI if no audio source is available
-  if (!audioSource) {
+  // Show upload UI ONLY if no audio source is available AND no ChatGPT audio URL exists
+  // If ChatGPT provided audio, NEVER show upload screen - show loading/editor instead
+  if (!audioSource && !hasChatGptAudio) {
     return (
       <div className="ringtone-editor">
         {showInitialLoading && (
