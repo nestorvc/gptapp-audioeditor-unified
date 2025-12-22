@@ -635,7 +635,7 @@ export function AudioEditor() {
         if (waveformSectionRef.current && waveformRef.current) {
           setTrimmerLinePosition(calculateSectionPosition(trimmerPosition));
           // Pins use same calculation as trimmer line, with small adjustment for alignment
-          const pinAdjustment = isVocalsMode ? 2 : -2; // +2% for dual mode, -2% for single mode
+          const pinAdjustment = 2; // +2% adjustment for both dual and single mode
           setStartPinPosition(calculateSectionPosition(startTrim) + pinAdjustment);
           setEndPinPosition(calculateSectionPosition(endTrim) + pinAdjustment);
         }
