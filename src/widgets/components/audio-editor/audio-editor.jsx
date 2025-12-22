@@ -2421,7 +2421,7 @@ export function AudioEditor() {
             {isDetectingBPMKey ? (
               <>
                 <span className="spinner" aria-hidden="true" />
-                <span>Loading audio attributes...</span>
+                <span>Loading attributes...</span>
               </>
             ) : (
               <span>{duplicatedText || formatMarqueeText()}</span>

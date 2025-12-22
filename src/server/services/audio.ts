@@ -808,18 +808,13 @@ export async function processAudioFromFile({
       format,
     });
 
-    // Use S3_UPLOADS_FOLDER for uploaded files
-    const uploadsConfig: S3UploadConfig = {
-      ...s3UploadConfig,
-      keyPrefix: s3UploadsFolder,
-    };
-
+    // Use S3_EXPORTS_FOLDER for exported files
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: processedFilePath,
       mimeType,
       downloadName: trackNameBase,
       extension,
-      config: uploadsConfig,
+      config: s3UploadConfig,
     });
 
     return {
@@ -999,18 +994,13 @@ export async function processDualTrackAudio({
       throw new Error("At least one track must be enabled");
     }
 
-    // Upload to S3
-    const uploadsConfig: S3UploadConfig = {
-      ...s3UploadConfig,
-      keyPrefix: s3UploadsFolder,
-    };
-
+    // Upload to S3 exports folder
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: processedFilePath,
       mimeType,
       downloadName: trackNameBase,
       extension,
-      config: uploadsConfig,
+      config: s3UploadConfig,
     });
 
     return {
