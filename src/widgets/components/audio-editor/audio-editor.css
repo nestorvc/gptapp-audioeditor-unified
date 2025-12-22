@@ -67,7 +67,8 @@ body {
   height: 40px;
   border-radius: 8px;
   border: none;
-  color: var(--orange);
+  background: var(--orange);
+  color: var(--white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -94,7 +95,7 @@ body {
   transform: scale(1);
 }
 
-.upload-replace-button {
+.header-tools-button {
   width: 40px;
   height: 40px;
   border-radius: 8px;
@@ -109,10 +110,16 @@ body {
   flex-shrink: 0;
 }
 
+.header-tools-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .extract-vocals-button {
   width: auto;
   padding: 0 var(--space-6);
-  gap: var(--space-3);
+  gap: var(--space-6);
 }
 
 .extract-vocals-text {
@@ -133,21 +140,21 @@ body {
   }
 }
 
-.upload-replace-button:hover {
+.header-tools-button:hover {
   background: var(--background-hover);
   opacity: 0.9;
 }
 
-.upload-replace-button:active {
+.header-tools-button:active {
   background: var(--background-active);
 }
 
-.upload-replace-button:focus-visible {
+.header-tools-button:focus-visible {
   outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }
 
-.upload-replace-icon {
+.button-svg-icon {
   color: var(--text-primary);
   opacity: 0.8;
 }
@@ -200,7 +207,7 @@ body {
   font-size: 14px;
   font-weight: 500;
   overflow: hidden;
-  width: 140px;
+  width: 160px;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%);
   position: relative;
 }
@@ -208,7 +215,7 @@ body {
 /* Desktop styles for track name marquee */
 @media (min-width: 425px) {
   .track-name-marquee {
-    width: 320px;
+    width: 160px;
   }
 }
 
@@ -371,6 +378,19 @@ body {
   margin-bottom: 0;
 }
 
+.time-markers-container {
+  position: relative;
+}
+
+/* Offset time-markers-container in dual track mode to align with waveform containers */
+.waveform-section:has(.waveform-dual-container) .time-markers-container {
+  /* Offset by: track padding (8px) + toggle width (60px) + gap (8px) = 76px */
+  /* Using 8px directly since --space-4 is not defined in CSS variables */
+  margin-left: calc(8px + 60px + 8px);
+  /* Adjust width to account for the offset */
+  width: calc(100% - 8px - 60px - 8px);
+}
+
 .time-markers {
   display: flex;
   justify-content: space-between;
@@ -489,18 +509,8 @@ body {
 }
 
 /* Vocals mode pin positioning */
-.vocals-mode-start-pin {
-  /* Position pin at top of first waveform container */
-  /* 12px (section padding) + 40px (time markers) + ~60px (toggle container height/centering) */
-  /* Pin is 65px tall, so center it at the top edge of waveform */
-  top: calc(12px + 40px + 60px + 32.5px);
-}
-
-.vocals-mode-end-pin {
-  /* Position pin at bottom of second waveform container */
-  /* 12px (section padding) + 40px (time markers) + 60px (first track toggle) + 120px (first waveform) + 12px (gap) + 60px (second track toggle) + 120px (second waveform) */
-  /* Pin is 65px tall, so center it at the bottom edge of waveform */
-  top: calc(12px + 40px + 60px + 120px + var(--space-4) + 60px + 120px - 32.5px);
+.vocals-mode-start-pin, .vocals-mode-end-pin {
+  width: 40px;
 }
 
 /* Ensure SVG pins are properly styled */
@@ -544,7 +554,7 @@ body {
 .trimmer-label {
   position: absolute;
   left: var(--space-6);
-  bottom: var(--space-6);
+  bottom: 2px;
   text-orientation: mixed;
   font-size: 10px;
   font-weight: 600;
@@ -564,6 +574,11 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.waveform-track:first-of-type {
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .waveform-toggle-container {
@@ -574,26 +589,20 @@ body {
   min-width: 60px;
 }
 
+.waveform-track .waveform-container {
+  width: 100%;
+  height: 60px;
+}
+
 .waveform-track-label {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
 }
 
-.waveform-track.music-track {
-  opacity: 0.75;
-}
-
-.waveform-track.music-track .waveform-bar {
-  opacity: 0.75;
-}
-
-.waveform-track.music-track .waveform-bar.background-bar {
-  opacity: 0.75;
-}
-
-.waveform-track.music-track .waveform-bar.selected-bar {
-  opacity: 0.75;
+.waveform-track.track-disabled .waveform-container {
+  filter: grayscale(1);
+  opacity: 0.5;
 }
 
 /* Trim and Fade Controls */

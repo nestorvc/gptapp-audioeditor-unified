@@ -352,6 +352,7 @@ export function AudioEditor() {
   const waveformSectionRef = useRef(null);
   const audioContextRef = useRef(null);
   const sourceNodeRef = useRef(null);
+  const sourceNodesRef = useRef([]); // Store all source nodes for dual track mode
   const gainNodeRef = useRef(null);
   const animationFrameRef = useRef(null);
   const playbackStartTimeRef = useRef(null);
@@ -633,9 +634,10 @@ export function AudioEditor() {
       requestAnimationFrame(() => {
         if (waveformSectionRef.current && waveformRef.current) {
           setTrimmerLinePosition(calculateSectionPosition(trimmerPosition));
-          // Pins need offset correction to align visually with trimmer line
-          setStartPinPosition(calculateSectionPosition(startTrim, { applyPinOffset: true }));
-          setEndPinPosition(calculateSectionPosition(endTrim, { applyPinOffset: true }));
+          // Pins use same calculation as trimmer line, with small adjustment for alignment
+          const pinAdjustment = isVocalsMode ? 2 : -2; // +2% for dual mode, -2% for single mode
+          setStartPinPosition(calculateSectionPosition(startTrim) + pinAdjustment);
+          setEndPinPosition(calculateSectionPosition(endTrim) + pinAdjustment);
         }
       });
     };
@@ -645,7 +647,7 @@ export function AudioEditor() {
     // Update on window resize
     window.addEventListener('resize', updatePositions);
     return () => window.removeEventListener('resize', updatePositions);
-  }, [trimmerPosition, startTrim, endTrim, isLoading, waveformData.length]);
+  }, [trimmerPosition, startTrim, endTrim, isLoading, waveformData.length, isVocalsMode]);
 
   // Generate waveform from audio buffer
   // Uses 55 samples for mobile (<425px), 100 for tablet (425-1024px), 150 for desktop (1024px+)
@@ -1320,6 +1322,18 @@ export function AudioEditor() {
   useEffect(() => {
     // Cleanup function to stop any ongoing playback
     const cleanup = () => {
+      // Stop all source nodes (for dual track mode)
+      if (sourceNodesRef.current && sourceNodesRef.current.length > 0) {
+        sourceNodesRef.current.forEach(source => {
+          try {
+            source.stop();
+          } catch (e) {
+            // Ignore errors if already stopped
+          }
+        });
+        sourceNodesRef.current = [];
+      }
+      // Also handle single source node (for backward compatibility)
       if (sourceNodeRef.current) {
         try {
           sourceNodeRef.current.stop();
@@ -1359,46 +1373,68 @@ export function AudioEditor() {
         const duration = endTime - startTime;
 
         if (isVocalsMode && vocalsBufferRef.current && musicBufferRef.current) {
-          // Dual track playback
-          const vocalsSource = audioContext.createBufferSource();
-          const musicSource = audioContext.createBufferSource();
-          const vocalsGain = audioContext.createGain();
-          const musicGain = audioContext.createGain();
+          // Check if at least one track is enabled
+          if (!vocalsEnabled && !musicEnabled) {
+            setIsPlaying(false);
+            return;
+          }
+
+          // Dual track playback - only create and start sources for enabled tracks
+          const sources = [];
+          const gainNodes = [];
           const merger = audioContext.createChannelMerger(2);
 
-          vocalsSource.buffer = vocalsBufferRef.current;
-          musicSource.buffer = musicBufferRef.current;
+          // Setup vocals track if enabled
+          if (vocalsEnabled) {
+            const vocalsSource = audioContext.createBufferSource();
+            const vocalsGain = audioContext.createGain();
+            vocalsSource.buffer = vocalsBufferRef.current;
+            vocalsSource.connect(vocalsGain);
+            vocalsGain.connect(merger, 0, 0);
+            sources.push(vocalsSource);
+            gainNodes.push(vocalsGain);
+          }
 
-          vocalsSource.connect(vocalsGain);
-          musicSource.connect(musicGain);
-          vocalsGain.connect(merger, 0, 0);
-          musicGain.connect(merger, 0, 1);
+          // Setup music track if enabled
+          if (musicEnabled) {
+            const musicSource = audioContext.createBufferSource();
+            const musicGain = audioContext.createGain();
+            musicSource.buffer = musicBufferRef.current;
+            musicSource.connect(musicGain);
+            // Connect to right channel if vocals also enabled, otherwise left
+            const outputChannel = vocalsEnabled ? 1 : 0;
+            musicGain.connect(merger, 0, outputChannel);
+            sources.push(musicSource);
+            gainNodes.push(musicGain);
+          }
+
           merger.connect(audioContext.destination);
 
-          // Apply toggle states
-          vocalsGain.gain.setValueAtTime(vocalsEnabled ? 1 : 0, audioContext.currentTime);
-          musicGain.gain.setValueAtTime(musicEnabled ? 1 : 0, audioContext.currentTime);
+          // Set initial gain values (all enabled tracks start at 1)
+          gainNodes.forEach(gain => {
+            gain.gain.setValueAtTime(1, audioContext.currentTime);
+          });
 
           // Apply fade in/out if enabled
           if (fadeInEnabled && fadeInTime > 0) {
-            const fadeInGain = vocalsEnabled && musicEnabled ? 1 : (vocalsEnabled || musicEnabled ? 1 : 0);
-            vocalsGain.gain.setValueAtTime(0, audioContext.currentTime);
-            musicGain.gain.setValueAtTime(0, audioContext.currentTime);
-            vocalsGain.gain.linearRampToValueAtTime(vocalsEnabled ? fadeInGain : 0, audioContext.currentTime + fadeInTime);
-            musicGain.gain.linearRampToValueAtTime(musicEnabled ? fadeInGain : 0, audioContext.currentTime + fadeInTime);
+            gainNodes.forEach(gain => {
+              gain.gain.setValueAtTime(0, audioContext.currentTime);
+              gain.gain.linearRampToValueAtTime(1, audioContext.currentTime + fadeInTime);
+            });
           }
 
           if (fadeOutEnabled && fadeOutTime > 0) {
             const fadeOutStart = audioContext.currentTime + duration - fadeOutTime;
-            const fadeOutGain = vocalsEnabled && musicEnabled ? 1 : (vocalsEnabled || musicEnabled ? 1 : 0);
-            vocalsGain.gain.setValueAtTime(vocalsEnabled ? fadeOutGain : 0, fadeOutStart);
-            musicGain.gain.setValueAtTime(musicEnabled ? fadeOutGain : 0, fadeOutStart);
-            vocalsGain.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
-            musicGain.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+            gainNodes.forEach(gain => {
+              gain.gain.setValueAtTime(1, fadeOutStart);
+              gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+            });
           }
 
-          sourceNodeRef.current = vocalsSource; // Store one for cleanup
-          gainNodeRef.current = vocalsGain;
+          // Store all sources for cleanup (so we can stop all tracks)
+          sourceNodesRef.current = sources;
+          sourceNodeRef.current = sources[0]; // Keep for backward compatibility
+          gainNodeRef.current = gainNodes[0];
 
           const playbackStart = audioContext.currentTime;
           playbackStartTimeRef.current = playbackStart;
@@ -1421,20 +1457,28 @@ export function AudioEditor() {
             animationFrameRef.current = requestAnimationFrame(updatePosition);
           };
 
-          vocalsSource.start(playbackStart, startTime);
-          musicSource.start(playbackStart, startTime);
-          vocalsSource.stop(playbackStart + duration);
-          musicSource.stop(playbackStart + duration);
+          // Start only enabled sources
+          sources.forEach(source => {
+            source.start(playbackStart, startTime);
+            source.stop(playbackStart + duration);
+          });
 
+          // Handle when any source ends
+          let endedCount = 0;
           const handleEnded = () => {
-            setIsPlaying(false);
-            setTrimmerPosition(endTrim);
-            sourceNodeRef.current = null;
-            playbackStartTimeRef.current = null;
+            endedCount++;
+            if (endedCount >= sources.length) {
+              setIsPlaying(false);
+              setTrimmerPosition(endTrim);
+              sourceNodesRef.current = [];
+              sourceNodeRef.current = null;
+              playbackStartTimeRef.current = null;
+            }
           };
 
-          vocalsSource.onended = handleEnded;
-          musicSource.onended = handleEnded;
+          sources.forEach(source => {
+            source.onended = handleEnded;
+          });
 
           updatePosition();
         } else {
@@ -1533,6 +1577,16 @@ export function AudioEditor() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Stop all source nodes (for dual track mode)
+      if (sourceNodesRef.current && sourceNodesRef.current.length > 0) {
+        sourceNodesRef.current.forEach(source => {
+          try {
+            source.stop();
+          } catch (e) {}
+        });
+        sourceNodesRef.current = [];
+      }
+      // Also handle single source node (for backward compatibility)
       if (sourceNodeRef.current) {
         try {
           sourceNodeRef.current.stop();
@@ -1782,27 +1836,114 @@ export function AudioEditor() {
 
       if (isVocalsMode && vocalsAudioUrl && musicAudioUrl) {
         // Dual track export
-        const params = new URLSearchParams();
-        params.append("vocalsUrl", vocalsAudioUrl);
-        params.append("musicUrl", musicAudioUrl);
-        params.append("vocalsEnabled", String(vocalsEnabled));
-        params.append("musicEnabled", String(musicEnabled));
-        params.append("format", outputFormat);
-        params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
-        params.append("startTime", startTime.toString());
-        params.append("duration", duration.toString());
-        params.append("fadeInEnabled", String(fadeInEnabled));
-        params.append("fadeInDuration", fadeInTime.toString());
-        params.append("fadeOutEnabled", String(fadeOutEnabled));
-        params.append("fadeOutDuration", fadeOutTime.toString());
+        // If both tracks are enabled, use original audio file to avoid ffmpeg filter conflicts
+        if (vocalsEnabled && musicEnabled) {
+          const audioSource = getAudioSource();
+          if (!audioSource) {
+            throw new Error("No audio source available");
+          }
 
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: params.toString(),
-        });
+          if (audioSource.isUploaded && audioSource.file) {
+            // Upload file directly to S3 first, then send S3 URL + processing parameters
+            debugLog("📤 [AUDIO EXPORT] Uploading original file to S3 first...");
+            
+            // Get presigned URL from server
+            const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                fileName: audioSource.file.name,
+                contentType: audioSource.file.type || "audio/mpeg",
+              }),
+            });
+
+            if (!presignedUrlResponse.ok) {
+              throw new Error("Failed to get presigned upload URL");
+            }
+
+            const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
+
+            // Upload file directly to S3
+            const s3UploadResponse = await fetch(uploadUrl, {
+              method: "PUT",
+              body: audioSource.file,
+              headers: {
+                "Content-Type": audioSource.file.type || "audio/mpeg",
+              },
+            });
+
+            if (!s3UploadResponse.ok) {
+              throw new Error("Failed to upload file to S3");
+            }
+
+            debugLog("✅ [AUDIO EXPORT] Original file uploaded to S3:", publicUrl);
+
+            // Send S3 URL + processing parameters to server
+            const params = new URLSearchParams();
+            params.append("audioUrl", publicUrl);
+            params.append("format", outputFormat);
+            params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+            params.append("startTime", startTime.toString());
+            params.append("duration", duration.toString());
+            params.append("fadeInEnabled", String(fadeInEnabled));
+            params.append("fadeInDuration", fadeInTime.toString());
+            params.append("fadeOutEnabled", String(fadeOutEnabled));
+            params.append("fadeOutDuration", fadeOutTime.toString());
+
+            response = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: params.toString(),
+            });
+          } else {
+            // Use URL directly (from toolOutput)
+            const params = new URLSearchParams();
+            params.append("audioUrl", audioSource.url);
+            params.append("format", outputFormat);
+            params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+            params.append("startTime", startTime.toString());
+            params.append("duration", duration.toString());
+            params.append("fadeInEnabled", String(fadeInEnabled));
+            params.append("fadeInDuration", fadeInTime.toString());
+            params.append("fadeOutEnabled", String(fadeOutEnabled));
+            params.append("fadeOutDuration", fadeOutTime.toString());
+
+            response = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: params.toString(),
+            });
+          }
+        } else {
+          // One or both tracks disabled - use separated tracks
+          const params = new URLSearchParams();
+          params.append("vocalsUrl", vocalsAudioUrl);
+          params.append("musicUrl", musicAudioUrl);
+          params.append("vocalsEnabled", String(vocalsEnabled));
+          params.append("musicEnabled", String(musicEnabled));
+          params.append("format", outputFormat);
+          params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+          params.append("startTime", startTime.toString());
+          params.append("duration", duration.toString());
+          params.append("fadeInEnabled", String(fadeInEnabled));
+          params.append("fadeInDuration", fadeInTime.toString());
+          params.append("fadeOutEnabled", String(fadeOutEnabled));
+          params.append("fadeOutDuration", fadeOutTime.toString());
+
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: params.toString(),
+          });
+        }
       } else if (!isVocalsMode) {
         // Single track export (original behavior)
         const audioSource = getAudioSource();
@@ -2218,12 +2359,13 @@ export function AudioEditor() {
           {isLoading ? (
             <span className="loading-spinner">...</span>
           ) : isPlaying ? (
-            <svg className="play-icon" width="35" height="35" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M0 10C0 4.47715 4.47715 0 10 0C15.5228 0 20 4.47715 20 10C20 15.5228 15.5228 20 10 20C4.47715 20 0 15.5228 0 10ZM6.25 7.25V12.75C6.25 13.5523 6.69772 13.75 7.25 13.75H8C8.55228 13.75 9 13.5523 9 12.75V7.25C9 6.69772 8.55228 6.25 8 6.25H7.25C6.69772 6.25 6.25 6.69772 6.25 7.25ZM12 6.25C11.4477 6.25 11 6.69772 11 7.25V12.75C11 13.5523 11.4477 13.75 12 13.75H12.75C13.3023 13.75 13.75 13.5523 13.75 12.75V7.25C13.75 6.69772 13.3023 6.25 12.75 6.25H12Z" fill="currentColor"/>
+            <svg className="play-icon" width="35" height="35" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6.5 7.75C6.5 7.05964 7.05964 6.5 7.75 6.5H9.25C9.94036 6.5 10.5 7.05964 10.5 7.75V16.25C10.5 16.9404 9.94036 17.5 9.25 17.5H7.75C7.05964 17.5 6.5 16.9404 6.5 16.25V7.75Z" fill="currentColor"/>
+              <path d="M13.5 7.75C13.5 7.05964 14.0596 6.5 14.75 6.5H16.25C16.9404 6.5 17.5 7.05964 17.5 7.75V16.25C17.5 16.9404 16.9404 17.5 16.25 17.5H14.75C14.0596 17.5 13.5 16.9404 13.5 16.25V7.75Z" fill="currentColor"/>
             </svg>
           ) : (
-            <svg className="play-icon" width="35" height="35" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path fillRule="evenodd" clipRule="evenodd" d="M10 0C4.47715 0 0 4.47715 0 10C0 15.5228 4.47715 20 10 20C15.5228 20 20 15.5228 20 10C20 4.47715 15.5228 0 10 0ZM7 6.96328V13.0368C7 13.9372 7.99609 14.481 8.7535 13.9941L13.4773 10.9574C14.1742 10.5094 14.1742 9.49071 13.4773 9.04272L8.7535 6.00596C7.9961 5.51906 7 6.06288 7 6.96328Z" fill="currentColor"/>
+            <svg className="play-icon" width="35" height="35" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 16.7229V7.27711C8 6.29075 9.08894 5.69298 9.9211 6.22254L17.3428 10.9454C18.1147 11.4366 18.1147 12.5634 17.3428 13.0546L9.92109 17.7775C9.08894 18.3071 8 17.7093 8 16.7229Z" fill="currentColor"/>
             </svg>
           )}
         </button>
@@ -2245,7 +2387,7 @@ export function AudioEditor() {
         </div>
 
         <button
-          className="upload-replace-button"
+          className="header-tools-button replace-audio-button"
           onClick={(e) => {
             e.preventDefault();
             if (fileInputRef.current) {
@@ -2255,13 +2397,13 @@ export function AudioEditor() {
           aria-label="Replace audio file"
           title="Replace audio file"
         >
-          <svg className="upload-replace-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 5C8.55228 5 9 5.44772 9 6V18C9 18.5523 8.55228 19 8 19C7.44772 19 7 18.5523 7 18V6C7 5.44772 7.44772 5 8 5ZM16 7C16.5523 7 17 7.44772 17 8V16C17 16.5523 16.5523 17 16 17C15.4477 17 15 16.5523 15 16V8C15 7.44772 15.4477 7 16 7ZM12 8.5C12.5523 8.5 13 8.94772 13 9.5V14.5C13 15.0523 12.5523 15.5 12 15.5C11.4477 15.5 11 15.0523 11 14.5V9.5C11 8.94772 11.4477 8.5 12 8.5ZM4 9.5C4.55228 9.5 5 9.94772 5 10.5V13.5C5 14.0523 4.55228 14.5 4 14.5C3.44772 14.5 3 14.0523 3 13.5V10.5C3 9.94772 3.44772 9.5 4 9.5ZM20 9.5C20.5523 9.5 21 9.94772 21 10.5V13.5C21 14.0523 20.5523 14.5 20 14.5C19.4477 14.5 19 14.0523 19 13.5V10.5C19 9.94772 19.4477 9.5 20 9.5Z" fill="currentColor"/>
+          <svg className="button-svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.032 5.024C17.75 5 17.377 5 16.8 5h-5.3c-.2 1-.401 1.911-.61 2.854-.131.596-.247 1.119-.523 1.56a2.998 2.998 0 0 1-.953.954c-.441.275-.964.39-1.56.522l-.125.028-2.512.558A1.003 1.003 0 0 1 5 11.5v5.3c0 .577 0 .949.024 1.232.022.272.06.372.085.422a1 1 0 0 0 .437.437c.05.025.15.063.422.085C6.25 19 6.623 19 7.2 19H10a1 1 0 1 1 0 2H7.161c-.527 0-.981 0-1.356-.03-.395-.033-.789-.104-1.167-.297a3 3 0 0 1-1.311-1.311c-.193-.378-.264-.772-.296-1.167A17.9 17.9 0 0 1 3 16.838V11c0-2.075 1.028-4.067 2.48-5.52C6.933 4.028 8.925 3 11 3h5.838c.528 0 .982 0 1.357.03.395.033.789.104 1.167.297a3 3 0 0 1 1.311 1.311c.193.378.264.772.296 1.167.031.375.031.83.031 1.356V10a1 1 0 1 1-2 0V7.2c0-.577 0-.949-.024-1.232-.022-.272-.06-.373-.085-.422a1 1 0 0 0-.437-.437c-.05-.025-.15-.063-.422-.085ZM5.28 9.414l2.015-.448c.794-.177.948-.225 1.059-.294a1 1 0 0 0 .318-.318c.069-.11.117-.265.294-1.059l.447-2.015c-.903.313-1.778.874-2.518 1.615-.741.74-1.302 1.615-1.615 2.518ZM17 15a1 1 0 1 1 2 0v2h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2h-2a1 1 0 1 1 0-2h2v-2Z" fill="currentColor"/>
           </svg>
         </button>
 
         <button
-          className="upload-replace-button extract-vocals-button"
+          className="header-tools-button extract-vocals-button"
           onClick={(e) => {
             e.preventDefault();
             handleExtractVocals();
@@ -2277,7 +2419,7 @@ export function AudioEditor() {
             </>
           ) : (
             <>
-              <svg className="upload-replace-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="button-svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18 2C18.5523 2 19 2.44772 19 3V15C19 15.5523 18.5523 16 18 16C17.4477 16 17 15.5523 17 15V3C17 2.44772 17.4477 2 18 2ZM11 3C11.5523 3 12 3.44772 12 4V5.5C12 6.05228 11.5523 6.5 11 6.5C10.4477 6.5 10 6.05228 10 5.5V4C10 3.44772 10.4477 3 11 3ZM14.5 5C15.0523 5 15.5 5.44772 15.5 6V12.25C15.5 12.8023 15.0523 13.25 14.5 13.25C13.9477 13.25 13.5 12.8023 13.5 12.25V6C13.5 5.44772 13.9477 5 14.5 5ZM21.5 7C22.0523 7 22.5 7.44772 22.5 8V10C22.5 10.5523 22.0523 11 21.5 11C20.9477 11 20.5 10.5523 20.5 10V8C20.5 7.44772 20.9477 7 21.5 7ZM8 10C7.17157 10 6.5 10.6716 6.5 11.5C6.5 12.3284 7.17157 13 8 13C8.82843 13 9.5 12.3284 9.5 11.5C9.5 10.6716 8.82843 10 8 10ZM4.5 11.5C4.5 9.567 6.067 8 8 8C9.933 8 11.5 9.567 11.5 11.5C11.5 13.433 9.933 15 8 15C6.067 15 4.5 13.433 4.5 11.5ZM5.14202 18.815C4.43814 19.3155 4 20.0257 4 21C4 21.5523 3.55228 22 3 22C2.44772 22 2 21.5523 2 21C2 19.3077 2.81186 18.0179 3.98298 17.1851C5.12436 16.3734 6.58924 16 8 16C9.41076 16 10.8756 16.3734 12.017 17.1851C13.1881 18.0178 14 19.3076 14 21C14 21.5523 13.5523 22 13 22C12.4477 22 12 21.5523 12 21C12 20.0257 11.5619 19.3155 10.858 18.815C10.1244 18.2933 9.08924 18 8 18C6.91076 18 5.87564 18.2933 5.14202 18.815Z" fill="currentColor"/>
               </svg>
               <span className="extract-vocals-text">Extract vocals</span>
@@ -2429,7 +2571,7 @@ export function AudioEditor() {
         {isVocalsMode ? (
           <div className="waveform-dual-container">
             {/* Vocals track */}
-            <div className="waveform-track">
+            <div className={`waveform-track ${!vocalsEnabled ? "track-disabled" : ""}`}>
               <div className="waveform-toggle-container">
                 <button
                   className={`toggle-switch ${vocalsEnabled ? "enabled" : ""}`}
@@ -2487,7 +2629,7 @@ export function AudioEditor() {
             </div>
 
             {/* Music track */}
-            <div className="waveform-track music-track">
+            <div className={`waveform-track music-track ${!musicEnabled ? "track-disabled" : ""}`}>
               <div className="waveform-toggle-container">
                 <button
                   className={`toggle-switch ${musicEnabled ? "enabled" : ""}`}
