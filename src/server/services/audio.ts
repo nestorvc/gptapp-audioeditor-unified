@@ -1130,99 +1130,271 @@ function parseWavFile(wavPath: string): Promise<{ samples: Float32Array; sampleR
   });
 }
 
-// detectBPMFromSamples - Simple BPM detection using autocorrelation
+// extractEnergyEnvelope - Converts audio samples to energy envelope for beat detection
+function extractEnergyEnvelope(samples: Float32Array, sampleRate: number): Float32Array {
+  // Use a window size of ~23ms (typical for beat detection)
+  const windowSize = Math.floor(sampleRate * 0.023); // ~23ms windows
+  const envelopeLength = Math.floor(samples.length / windowSize);
+  const envelope = new Float32Array(envelopeLength);
+
+  for (let i = 0; i < envelopeLength; i++) {
+    let energy = 0;
+    const start = i * windowSize;
+    const end = Math.min(start + windowSize, samples.length);
+
+    // Calculate RMS energy in window
+    for (let j = start; j < end; j++) {
+      energy += samples[j] * samples[j];
+    }
+    envelope[i] = Math.sqrt(energy / (end - start));
+  }
+
+  return envelope;
+}
+
+// detectOnsets - Detects beat onsets using spectral flux
+function detectOnsets(envelope: Float32Array): Float32Array {
+  const onsets = new Float32Array(envelope.length);
+  
+  // Calculate first-order difference (spectral flux)
+  for (let i = 1; i < envelope.length; i++) {
+    const diff = envelope[i] - envelope[i - 1];
+    // Only keep positive differences (energy increases)
+    onsets[i] = Math.max(0, diff);
+  }
+
+  // Apply simple smoothing to reduce noise
+  const smoothed = new Float32Array(onsets.length);
+  for (let i = 1; i < onsets.length - 1; i++) {
+    smoothed[i] = (onsets[i - 1] + onsets[i] + onsets[i + 1]) / 3;
+  }
+  smoothed[0] = onsets[0];
+  smoothed[onsets.length - 1] = onsets[onsets.length - 1];
+
+  return smoothed;
+}
+
+// rejectHarmonics - Checks if detected BPM is a harmonic/subharmonic and corrects it
+function rejectHarmonics(
+  candidates: Array<{ bpm: number; correlation: number }>,
+  minBPM: number,
+  maxBPM: number
+): number | null {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // Sort by correlation (highest first)
+  candidates.sort((a, b) => b.correlation - a.correlation);
+
+  const best = candidates[0];
+  let finalBPM = best.bpm;
+
+  // Check if best candidate is a subharmonic (half the tempo)
+  // If 62 BPM detected, check if 124 BPM also exists and is strong
+  for (const candidate of candidates) {
+    const doubled = candidate.bpm * 2;
+    if (doubled >= minBPM && doubled <= maxBPM) {
+      // Check if doubled BPM exists in candidates
+      const doubledCandidate = candidates.find((c) => Math.abs(c.bpm - doubled) < 2);
+      if (doubledCandidate && doubledCandidate.correlation > best.correlation * 0.7) {
+        // Prefer the doubled BPM if it's reasonably strong
+        finalBPM = doubled;
+        break;
+      }
+    }
+  }
+
+  // Also check if we detected a harmonic (double the tempo)
+  // If 220 BPM detected, check if 110 BPM exists
+  if (finalBPM > 120) {
+    const halved = finalBPM / 2;
+    if (halved >= minBPM && halved <= maxBPM) {
+      const halvedCandidate = candidates.find((c) => Math.abs(c.bpm - halved) < 2);
+      if (halvedCandidate && halvedCandidate.correlation > best.correlation * 0.7) {
+        finalBPM = halved;
+      }
+    }
+  }
+
+  return Math.round(finalBPM);
+}
+
+// detectBPMFromSamples - Improved BPM detection using energy envelope and harmonic rejection
 function detectBPMFromSamples(samples: Float32Array, sampleRate: number): number | null {
   // Analyze first 30 seconds for performance
   const maxDuration = 30; // seconds
   const maxSamples = Math.min(samples.length, sampleRate * maxDuration);
   const analysisSamples = samples.slice(0, maxSamples);
 
-  // Simple autocorrelation-based BPM detection
+  // Extract energy envelope (emphasizes beats over harmonics)
+  const envelope = extractEnergyEnvelope(analysisSamples, sampleRate);
+  const envelopeSampleRate = envelope.length / (maxSamples / sampleRate);
+
+  // Detect onsets for better beat detection
+  const onsets = detectOnsets(envelope);
+
+  // Use envelope/onsets for autocorrelation instead of raw samples
   const minBPM = 60;
   const maxBPM = 200;
-  const minPeriod = Math.floor((60 / maxBPM) * sampleRate);
-  const maxPeriod = Math.floor((60 / minBPM) * sampleRate);
+  const minPeriod = Math.floor((60 / maxBPM) * envelopeSampleRate);
+  const maxPeriod = Math.floor((60 / minBPM) * envelopeSampleRate);
 
-  let maxCorrelation = 0;
-  let bestPeriod = 0;
+  const candidates: Array<{ bpm: number; correlation: number }> = [];
 
+  // Autocorrelation on energy envelope
   for (let period = minPeriod; period <= maxPeriod; period++) {
     let correlation = 0;
-    const correlationLength = Math.min(analysisSamples.length - period, sampleRate * 2);
+    const correlationLength = Math.min(envelope.length - period, Math.floor(envelopeSampleRate * 2));
+
+    if (correlationLength <= 0) continue;
 
     for (let i = 0; i < correlationLength; i++) {
-      correlation += Math.abs(analysisSamples[i] * analysisSamples[i + period]);
+      // Use both envelope and onsets for better accuracy
+      correlation += envelope[i] * envelope[i + period] * (1 + onsets[i] * 2);
     }
 
     correlation /= correlationLength;
 
-    if (correlation > maxCorrelation) {
-      maxCorrelation = correlation;
-      bestPeriod = period;
+    if (correlation > 0.01) { // Threshold to filter noise
+      const bpm = (60 * envelopeSampleRate) / period;
+      if (bpm >= minBPM && bpm <= maxBPM) {
+        candidates.push({ bpm, correlation });
+      }
     }
   }
 
-  if (bestPeriod === 0) {
+  if (candidates.length === 0) {
     return null;
   }
 
-  const bpm = (60 * sampleRate) / bestPeriod;
-  return Math.round(bpm);
+  // Apply harmonic rejection
+  const finalBPM = rejectHarmonics(candidates, minBPM, maxBPM);
+  return finalBPM;
 }
 
-// detectKeyFromSamples - Simple key detection using pitch analysis
-function detectKeyFromSamples(samples: Float32Array, sampleRate: number): { key: string; scale?: string } | null {
-  // Analyze first 30 seconds
-  const maxDuration = 30;
+// analyzeChromagram - Analyzes chroma features (pitch class distribution) from audio
+function analyzeChromagram(samples: Float32Array, sampleRate: number): Float32Array {
+  // Chromagram represents energy in each of the 12 pitch classes (C, C#, D, ..., B)
+  const chromagram = new Float32Array(12);
+  const maxDuration = 30; // seconds
   const maxSamples = Math.min(samples.length, sampleRate * maxDuration);
   const analysisSamples = samples.slice(0, maxSamples);
 
-  // Simple pitch detection using autocorrelation
-  const minFreq = 80; // Hz (low E)
-  const maxFreq = 1000; // Hz
+  // Use FFT-like approach: analyze frequency content and map to pitch classes
+  // Simplified: use autocorrelation to find dominant frequencies and map to chroma
+  const minFreq = 80; // Hz
+  const maxFreq = 2000; // Hz (extend range for better key detection)
   const minPeriod = Math.floor(sampleRate / maxFreq);
   const maxPeriod = Math.floor(sampleRate / minFreq);
 
-  let maxCorrelation = 0;
-  let bestPeriod = 0;
+  // Analyze multiple frequency bands
+  const windowSize = Math.floor(sampleRate * 0.1); // 100ms windows
+  const numWindows = Math.floor(analysisSamples.length / windowSize);
 
-  for (let period = minPeriod; period <= maxPeriod; period++) {
-    let correlation = 0;
-    const correlationLength = Math.min(analysisSamples.length - period, sampleRate);
+  for (let w = 0; w < numWindows; w++) {
+    const windowStart = w * windowSize;
+    const windowEnd = Math.min(windowStart + windowSize, analysisSamples.length);
+    const window = analysisSamples.slice(windowStart, windowEnd);
 
-    for (let i = 0; i < correlationLength; i++) {
-      correlation += Math.abs(analysisSamples[i] * analysisSamples[i + period]);
+    // Find dominant frequency in this window using autocorrelation
+    let maxCorrelation = 0;
+    let bestPeriod = 0;
+
+    for (let period = minPeriod; period <= maxPeriod && period < window.length; period++) {
+      let correlation = 0;
+      const correlationLength = Math.min(window.length - period, Math.floor(sampleRate * 0.05));
+
+      for (let i = 0; i < correlationLength; i++) {
+        correlation += Math.abs(window[i] * window[i + period]);
+      }
+
+      correlation /= correlationLength;
+
+      if (correlation > maxCorrelation) {
+        maxCorrelation = correlation;
+        bestPeriod = period;
+      }
     }
 
-    correlation /= correlationLength;
+    if (bestPeriod > 0 && maxCorrelation > 0.01) {
+      const frequency = sampleRate / bestPeriod;
+      
+      // Convert frequency to pitch class (chroma)
+      const A4 = 440;
+      const C0 = A4 * Math.pow(2, -4.75);
+      const h = 12 * Math.log2(frequency / C0);
+      const pitchClass = Math.round(h) % 12;
+      const pitchClassIndex = ((pitchClass % 12) + 12) % 12; // Ensure positive
 
-    if (correlation > maxCorrelation) {
-      maxCorrelation = correlation;
-      bestPeriod = period;
+      // Add energy to corresponding chroma bin
+      chromagram[pitchClassIndex] += maxCorrelation;
     }
   }
 
-  if (bestPeriod === 0) {
+  // Normalize chromagram
+  const sum = chromagram.reduce((a, b) => a + b, 0);
+  if (sum > 0) {
+    for (let i = 0; i < 12; i++) {
+      chromagram[i] /= sum;
+    }
+  }
+
+  return chromagram;
+}
+
+// Krumhansl-Schmuckler key profiles (simplified)
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+// detectKeyFromSamples - Improved key detection using chromagram and Krumhansl-Schmuckler algorithm
+function detectKeyFromSamples(samples: Float32Array, sampleRate: number): { key: string; scale?: string } | null {
+  // Analyze chromagram
+  const chromagram = analyzeChromagram(samples, sampleRate);
+
+  // Check if chromagram has meaningful data
+  const maxEnergy = Math.max(...chromagram);
+  if (maxEnergy < 0.01) {
     return null;
   }
 
-  const frequency = sampleRate / bestPeriod;
-
-  // Convert frequency to musical note
-  const A4 = 440; // Standard tuning
-  const C0 = A4 * Math.pow(2, -4.75);
-  const h = Math.round(12 * Math.log2(frequency / C0));
-  const note = h % 12;
-  const octave = Math.floor(h / 12) - 1;
-
   const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const detectedNote = noteNames[note];
+  let bestKey = 0;
+  let bestScale: "major" | "minor" = "major";
+  let bestScore = -Infinity;
 
-  // Return the detected note even if correlation is low - better to show something than nothing
-  // The correlation threshold was too strict and prevented key detection for many audio files
+  // Test all 12 keys in both major and minor
+  for (let key = 0; key < 12; key++) {
+    // Test major
+    let majorScore = 0;
+    for (let i = 0; i < 12; i++) {
+      const chromaIndex = (i - key + 12) % 12;
+      majorScore += chromagram[chromaIndex] * MAJOR_PROFILE[i];
+    }
+
+    // Test minor
+    let minorScore = 0;
+    for (let i = 0; i < 12; i++) {
+      const chromaIndex = (i - key + 12) % 12;
+      minorScore += chromagram[chromaIndex] * MINOR_PROFILE[i];
+    }
+
+    if (majorScore > bestScore) {
+      bestScore = majorScore;
+      bestKey = key;
+      bestScale = "major";
+    }
+
+    if (minorScore > bestScore) {
+      bestScore = minorScore;
+      bestKey = key;
+      bestScale = "minor";
+    }
+  }
+
   return {
-    key: detectedNote,
-    scale: "major", // Simplified - real detection would analyze harmonic content
+    key: noteNames[bestKey],
+    scale: bestScale,
   };
 }
 
@@ -1255,7 +1427,10 @@ export async function detectBPMAndKey({
     // Detect key
     const keyResult = detectKeyFromSamples(samples, sampleRate);
     // Combine key and scale into a single string like "C Major" or "A Minor"
-    const key = keyResult ? `${keyResult.key} ${keyResult.scale || "Major"}` : null;
+    const scaleCapitalized = keyResult?.scale 
+      ? keyResult.scale.charAt(0).toUpperCase() + keyResult.scale.slice(1)
+      : "Major";
+    const key = keyResult ? `${keyResult.key} ${scaleCapitalized}` : null;
 
     console.log("[BPM/Key Detection] Results:", {
       bpm,
