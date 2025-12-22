@@ -1834,99 +1834,73 @@ export function AudioEditor() {
 
       let response;
 
-      if (isVocalsMode && vocalsAudioUrl && musicAudioUrl) {
-        // Dual track export
-        // If both tracks are enabled, use original audio file to avoid ffmpeg filter conflicts
-        if (vocalsEnabled && musicEnabled) {
-          const audioSource = getAudioSource();
-          if (!audioSource) {
-            throw new Error("No audio source available");
+      // If in dual mode with both tracks enabled, use original audio (same as single track)
+      if (isVocalsMode && vocalsEnabled && musicEnabled) {
+        const audioSource = getAudioSource();
+        if (!audioSource) {
+          throw new Error("No audio source available");
+        }
+
+        if (audioSource.isUploaded && audioSource.file) {
+          // Upload file directly to S3 first, then send S3 URL + processing parameters
+          debugLog("📤 [AUDIO EXPORT] Uploading original file to S3 first (both tracks enabled)...");
+          
+          // Get presigned URL from server
+          const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              fileName: audioSource.file.name,
+              contentType: audioSource.file.type || "audio/mpeg",
+            }),
+          });
+
+          if (!presignedUrlResponse.ok) {
+            throw new Error("Failed to get presigned upload URL");
           }
 
-          if (audioSource.isUploaded && audioSource.file) {
-            // Upload file directly to S3 first, then send S3 URL + processing parameters
-            debugLog("📤 [AUDIO EXPORT] Uploading original file to S3 first...");
-            
-            // Get presigned URL from server
-            const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                fileName: audioSource.file.name,
-                contentType: audioSource.file.type || "audio/mpeg",
-              }),
-            });
+          const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
 
-            if (!presignedUrlResponse.ok) {
-              throw new Error("Failed to get presigned upload URL");
-            }
+          // Upload file directly to S3
+          const s3UploadResponse = await fetch(uploadUrl, {
+            method: "PUT",
+            body: audioSource.file,
+            headers: {
+              "Content-Type": audioSource.file.type || "audio/mpeg",
+            },
+          });
 
-            const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
-
-            // Upload file directly to S3
-            const s3UploadResponse = await fetch(uploadUrl, {
-              method: "PUT",
-              body: audioSource.file,
-              headers: {
-                "Content-Type": audioSource.file.type || "audio/mpeg",
-              },
-            });
-
-            if (!s3UploadResponse.ok) {
-              throw new Error("Failed to upload file to S3");
-            }
-
-            debugLog("✅ [AUDIO EXPORT] Original file uploaded to S3:", publicUrl);
-
-            // Send S3 URL + processing parameters to server
-            const params = new URLSearchParams();
-            params.append("audioUrl", publicUrl);
-            params.append("format", outputFormat);
-            params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
-            params.append("startTime", startTime.toString());
-            params.append("duration", duration.toString());
-            params.append("fadeInEnabled", String(fadeInEnabled));
-            params.append("fadeInDuration", fadeInTime.toString());
-            params.append("fadeOutEnabled", String(fadeOutEnabled));
-            params.append("fadeOutDuration", fadeOutTime.toString());
-
-            response = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: params.toString(),
-            });
-          } else {
-            // Use URL directly (from toolOutput)
-            const params = new URLSearchParams();
-            params.append("audioUrl", audioSource.url);
-            params.append("format", outputFormat);
-            params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
-            params.append("startTime", startTime.toString());
-            params.append("duration", duration.toString());
-            params.append("fadeInEnabled", String(fadeInEnabled));
-            params.append("fadeInDuration", fadeInTime.toString());
-            params.append("fadeOutEnabled", String(fadeOutEnabled));
-            params.append("fadeOutDuration", fadeOutTime.toString());
-
-            response = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: params.toString(),
-            });
+          if (!s3UploadResponse.ok) {
+            throw new Error("Failed to upload file to S3");
           }
-        } else {
-          // One or both tracks disabled - use separated tracks
+
+          debugLog("✅ [AUDIO EXPORT] Original file uploaded to S3:", publicUrl);
+
+          // Send S3 URL + processing parameters to server (single track processing)
           const params = new URLSearchParams();
-          params.append("vocalsUrl", vocalsAudioUrl);
-          params.append("musicUrl", musicAudioUrl);
-          params.append("vocalsEnabled", String(vocalsEnabled));
-          params.append("musicEnabled", String(musicEnabled));
+          params.append("audioUrl", publicUrl);
+          params.append("format", outputFormat);
+          params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+          params.append("startTime", startTime.toString());
+          params.append("duration", duration.toString());
+          params.append("fadeInEnabled", String(fadeInEnabled));
+          params.append("fadeInDuration", fadeInTime.toString());
+          params.append("fadeOutEnabled", String(fadeOutEnabled));
+          params.append("fadeOutDuration", fadeOutTime.toString());
+
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: params.toString(),
+          });
+        } else {
+          // Use URL directly (from toolOutput) - single track processing
+          const params = new URLSearchParams();
+          params.append("audioUrl", audioSource.url);
           params.append("format", outputFormat);
           params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
           params.append("startTime", startTime.toString());
@@ -1944,6 +1918,29 @@ export function AudioEditor() {
             body: params.toString(),
           });
         }
+      } else if (isVocalsMode && vocalsAudioUrl && musicAudioUrl) {
+        // Dual track export - one or both tracks disabled, use separated tracks
+        const params = new URLSearchParams();
+        params.append("vocalsUrl", vocalsAudioUrl);
+        params.append("musicUrl", musicAudioUrl);
+        params.append("vocalsEnabled", String(vocalsEnabled));
+        params.append("musicEnabled", String(musicEnabled));
+        params.append("format", outputFormat);
+        params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+        params.append("startTime", startTime.toString());
+        params.append("duration", duration.toString());
+        params.append("fadeInEnabled", String(fadeInEnabled));
+        params.append("fadeInDuration", fadeInTime.toString());
+        params.append("fadeOutEnabled", String(fadeOutEnabled));
+        params.append("fadeOutDuration", fadeOutTime.toString());
+
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
       } else if (!isVocalsMode) {
         // Single track export (original behavior)
         const audioSource = getAudioSource();
@@ -2116,7 +2113,7 @@ export function AudioEditor() {
     } finally {
       setTimeout(() => {
         setIsGenerating(false);
-      }, 5000);
+      }, 200);
     }
   };
 
@@ -2352,7 +2349,7 @@ export function AudioEditor() {
       <div className="ringtone-header">
         <button
           onClick={handlePlay}
-          disabled={isLoading}
+          disabled={isLoading || (isVocalsMode && !vocalsEnabled && !musicEnabled)}
           className={`play-button ${isPlaying ? "playing" : ""} ${isLoading ? "loading" : ""}`}
           aria-label={isPlaying ? "Pause" : "Play"}
         >
@@ -2902,7 +2899,7 @@ export function AudioEditor() {
         <button
           className="generate-button"
           onClick={handleExportAudio}
-          disabled={!rightsConfirmed || isLoading || isGenerating}
+          disabled={!rightsConfirmed || isLoading || isGenerating || (isVocalsMode && !vocalsEnabled && !musicEnabled)}
           >
           {isGenerating ? (
             <>

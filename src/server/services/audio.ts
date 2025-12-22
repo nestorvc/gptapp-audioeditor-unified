@@ -940,36 +940,22 @@ export async function processDualTrackAudio({
       const finalMusicPath = musicTrimmedPath;
       const finalProcessedPath = processedFilePath;
       await new Promise<void>((resolve, reject) => {
-        // Build complex filter with fade effects included
-        const safeFadeIn = Math.min(fadeInEnabled ? fadeInDuration : 0, duration / 2);
-        const safeFadeOut = Math.min(fadeOutEnabled ? fadeOutDuration : 0, duration / 2);
-        const fadeOutStart = Math.max(0, duration - safeFadeOut);
-        
-        const filterParts = ["[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2[a0]"];
-        let currentLabel = "a0";
-        
-        // Add fade in to complex filter
-        if (safeFadeIn > 0) {
-          filterParts.push(`[${currentLabel}]afade=t=in:st=0:d=${safeFadeIn}[a1]`);
-          currentLabel = "a1";
-        }
-        
-        // Add fade out to complex filter
-        if (safeFadeOut > 0 && fadeOutStart > safeFadeIn) {
-          filterParts.push(`[${currentLabel}]afade=t=out:st=${fadeOutStart}:d=${safeFadeOut}[a]`);
-          currentLabel = "a";
-        }
-        
-        // If no fade effects, use a0 as final output
-        if (currentLabel === "a0") {
-          filterParts[0] = "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2[a]";
-        }
-        
         let command = ffmpeg()
           .input(finalVocalsPath)
           .input(finalMusicPath)
-          .complexFilter(filterParts)
+          .complexFilter([
+            "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2[a]",
+          ])
           .outputOptions(["-map", "[a]"]);
+
+        // Apply fade in/out
+        if (fadeInEnabled && fadeInDuration > 0) {
+          command = command.audioFilters(`afade=t=in:st=0:d=${fadeInDuration}`);
+        }
+        if (fadeOutEnabled && fadeOutDuration > 0) {
+          const fadeOutStart = duration - fadeOutDuration;
+          command = command.audioFilters(`afade=t=out:st=${fadeOutStart}:d=${fadeOutDuration}`);
+        }
 
         // Apply format conversion
         const formatConfig = AUDIO_FORMAT_CONFIG[format];
