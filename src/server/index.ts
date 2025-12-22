@@ -442,6 +442,13 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
   }
 
   const startTime = Date.now();
+  
+  // Track BPM detection started
+  await trackEvent("fe_bpm_detection_started", {
+    has_audio_url: !!audioUrl,
+    source: "api",
+  });
+
   try {
     const result = await detectBPMAndKey({
       audioUrl: audioUrl as string,
@@ -541,6 +548,15 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
     });
 
     const startTime = Date.now();
+    
+    // Track vocal extraction started
+    await trackEvent("fe_vocal_extraction_started", {
+      has_audio_file: !!file,
+      has_audio_url: !!audioUrl,
+      has_track_name: !!trackName,
+      source: "api",
+    });
+
     const result = await separateVoiceFromMusic({
       audioUrl: resultAudioUrl,
       suggestedTrackName: trackName || null,

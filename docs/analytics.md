@@ -192,17 +192,41 @@ Triggered when an error occurs during widget operation.
 
 #### `fe_vocal_extraction_started`
 
-Triggered when vocal extraction is initiated from the widget.
+Triggered when vocal extraction is initiated from the widget or API. This helps track if users abandon the process before completion.
 
 **Parameters:**
-- `source` (string): Source - `"manual"` or `"chatgpt_url"`
+- `source` (string): Source - `"manual"`, `"chatgpt_url"`, or `"api"` (for server-side API)
+- `has_audio_file` (boolean, API only): Whether audio file was uploaded
+- `has_audio_url` (boolean, API only): Whether audio URL was provided
+- `has_track_name` (boolean, API only): Whether track name was provided
 
 #### `fe_bpm_detection_started`
 
-Triggered when BPM detection is initiated from the widget.
+Triggered when BPM detection is initiated from the widget or API.
 
 **Parameters:**
-- `source` (string): Source - `"manual"` or `"chatgpt_url"`
+- `source` (string): Source - `"manual"`, `"chatgpt_url"`, or `"api"` (for server-side API)
+- `has_audio_url` (boolean, API only): Whether audio URL was provided
+
+#### `fe_bpm_detection_completed`
+
+Triggered when BPM detection completes successfully (server-side API).
+
+**Parameters:**
+- `bpm` (number|null): Detected BPM
+- `key` (string|null): Detected musical key
+- `processing_time_ms` (number): Processing time in milliseconds
+- `source` (string): Source - `"api"`
+
+#### `fe_bpm_detection_error`
+
+Triggered when BPM detection fails (server-side API).
+
+**Parameters:**
+- `error_type` (string): Error type - `"detection_failed"`
+- `error_message` (string): Error message
+- `processing_time_ms` (number): Processing time in milliseconds
+- `source` (string): Source - `"api"`
 
 #### `fe_dual_track_exported`
 

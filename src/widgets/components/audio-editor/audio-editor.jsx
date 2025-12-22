@@ -374,6 +374,7 @@ export function AudioEditor() {
   const sendFollowUpMessage = useSendFollowUpMessage();
   // Vocal extraction state
   const [isExtractingVocals, setIsExtractingVocals] = useState(false);
+  const [extractingVocalsMessage, setExtractingVocalsMessage] = useState("Separating...");
   const [isVocalsMode, setIsVocalsMode] = useState(false);
   const [vocalsAudioUrl, setVocalsAudioUrl] = useState(null);
   const [musicAudioUrl, setMusicAudioUrl] = useState(null);
@@ -389,6 +390,25 @@ export function AudioEditor() {
     setGenerationSuccess("");
     setDownloadUrl(null);
   }, [outputFormat]);
+
+  // Rotate extracting vocals message every 10 seconds
+  useEffect(() => {
+    if (!isExtractingVocals) {
+      setExtractingVocalsMessage("Separating...");
+      return;
+    }
+
+    const messages = ["Separating...", "Processing...", "Almost there..."];
+    let currentIndex = 0;
+    setExtractingVocalsMessage(messages[currentIndex]);
+
+    const interval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % messages.length;
+      setExtractingVocalsMessage(messages[currentIndex]);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isExtractingVocals]);
 
   useEffect(() => {
     if (toolOutput?.defaultFormat) {
@@ -684,6 +704,35 @@ export function AudioEditor() {
     }
 
     return filteredData;
+  };
+
+  // Normalize two waveforms together so they use the same scale
+  const normalizeWaveformsTogether = (waveform1, waveform2) => {
+    // Find the maximum value across both waveforms
+    const max1 = Math.max(...waveform1);
+    const max2 = Math.max(...waveform2);
+    const globalMax = Math.max(max1, max2);
+    
+    // If both are already normalized similarly or invalid, return as-is
+    if (globalMax <= 0 || (max1 <= 0 && max2 <= 0)) return [waveform1, waveform2];
+    
+    // Normalize both waveforms to use the same scale
+    // Scale each waveform so its maximum matches the global maximum
+    const normalized1 = max1 > 0 
+      ? waveform1.map(val => {
+          const scaled = (val / max1) * globalMax;
+          return Math.max(0.1, scaled);
+        })
+      : waveform1;
+    
+    const normalized2 = max2 > 0
+      ? waveform2.map(val => {
+          const scaled = (val / max2) * globalMax;
+          return Math.max(0.1, scaled);
+        })
+      : waveform2;
+    
+    return [normalized1, normalized2];
   };
 
   // Find the best 30-second segment for ringtone based on energy analysis
@@ -1767,8 +1816,11 @@ export function AudioEditor() {
       const vocalsWaveform = await generateWaveform(vocalsBuffer);
       const musicWaveform = await generateWaveform(musicBuffer);
 
-      setVocalsWaveformData(vocalsWaveform);
-      setMusicWaveformData(musicWaveform);
+      // Normalize both waveforms together so they use the same scale
+      const [normalizedVocals, normalizedMusic] = normalizeWaveformsTogether(vocalsWaveform, musicWaveform);
+
+      setVocalsWaveformData(normalizedVocals);
+      setMusicWaveformData(normalizedMusic);
       setVocalsAudioUrl(result.vocalsUrl);
       setMusicAudioUrl(result.musicUrl);
 
@@ -2451,20 +2503,20 @@ export function AudioEditor() {
             handleExtractVocals();
           }}
           disabled={isExtractingVocals || isVocalsMode || isLoading}
-          aria-label="Extract vocals"
-          title={isVocalsMode ? "Vocals already extracted" : isExtractingVocals ? "Extracting..." : "Extract vocals"}
+          aria-label="Separate vocals"
+          title={isVocalsMode ? "Vocals already separated" : isExtractingVocals ? "Separating..." : "Separate vocals"}
         >
           {isExtractingVocals ? (
             <>
               <span className="spinner" aria-hidden="true" />
-              <span className="extract-vocals-text">Extracting...</span>
+              <span className="extract-vocals-text">{extractingVocalsMessage}</span>
             </>
           ) : (
             <>
               <svg className="button-svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18 2C18.5523 2 19 2.44772 19 3V15C19 15.5523 18.5523 16 18 16C17.4477 16 17 15.5523 17 15V3C17 2.44772 17.4477 2 18 2ZM11 3C11.5523 3 12 3.44772 12 4V5.5C12 6.05228 11.5523 6.5 11 6.5C10.4477 6.5 10 6.05228 10 5.5V4C10 3.44772 10.4477 3 11 3ZM14.5 5C15.0523 5 15.5 5.44772 15.5 6V12.25C15.5 12.8023 15.0523 13.25 14.5 13.25C13.9477 13.25 13.5 12.8023 13.5 12.25V6C13.5 5.44772 13.9477 5 14.5 5ZM21.5 7C22.0523 7 22.5 7.44772 22.5 8V10C22.5 10.5523 22.0523 11 21.5 11C20.9477 11 20.5 10.5523 20.5 10V8C20.5 7.44772 20.9477 7 21.5 7ZM8 10C7.17157 10 6.5 10.6716 6.5 11.5C6.5 12.3284 7.17157 13 8 13C8.82843 13 9.5 12.3284 9.5 11.5C9.5 10.6716 8.82843 10 8 10ZM4.5 11.5C4.5 9.567 6.067 8 8 8C9.933 8 11.5 9.567 11.5 11.5C11.5 13.433 9.933 15 8 15C6.067 15 4.5 13.433 4.5 11.5ZM5.14202 18.815C4.43814 19.3155 4 20.0257 4 21C4 21.5523 3.55228 22 3 22C2.44772 22 2 21.5523 2 21C2 19.3077 2.81186 18.0179 3.98298 17.1851C5.12436 16.3734 6.58924 16 8 16C9.41076 16 10.8756 16.3734 12.017 17.1851C13.1881 18.0178 14 19.3076 14 21C14 21.5523 13.5523 22 13 22C12.4477 22 12 21.5523 12 21C12 20.0257 11.5619 19.3155 10.858 18.815C10.1244 18.2933 9.08924 18 8 18C6.91076 18 5.87564 18.2933 5.14202 18.815Z" fill="currentColor"/>
               </svg>
-              <span className="extract-vocals-text">Extract vocals</span>
+              <span className="extract-vocals-text">Separate vocals</span>
             </>
           )}
         </button>

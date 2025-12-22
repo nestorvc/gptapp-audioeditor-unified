@@ -127,6 +127,9 @@ body {
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
+  min-width: 15ch;
+  display: inline-block;
+  text-align: left;
 }
 
 @media (max-width: 424px) {
