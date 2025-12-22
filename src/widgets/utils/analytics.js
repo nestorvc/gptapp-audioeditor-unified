@@ -30,26 +30,56 @@ export function initGA4(id) {
 
   // Load gtag.js script dynamically
   if (!gtagLoaded) {
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${id}`;
-    document.head.appendChild(script);
-
-    // Initialize gtag
+    // Initialize dataLayer immediately (before script loads)
     window.dataLayer = window.dataLayer || [];
     function gtag() {
       window.dataLayer.push(arguments);
     }
     window.gtag = gtag;
 
-    gtag('js', new Date());
-    gtag('config', id, {
-      send_page_view: true,
-    });
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${id}`;
+    
+    // Wait for script to actually load before marking as initialized
+    script.onload = () => {
+      // The real gtag.js will override our local function
+      gtag('js', new Date());
+      gtag('config', id, {
+        send_page_view: true,
+      });
 
-    gtagLoaded = true;
-    isInitialized = true;
-    console.log('[Analytics] GA4 initialized with ID:', id);
+      gtagLoaded = true;
+      isInitialized = true;
+      console.log('[Analytics] GA4 initialized with ID:', id);
+      console.log('[Analytics] Script loaded successfully. dataLayer length:', window.dataLayer.length);
+      
+      // Verify the real gtag function is now available
+      if (typeof window.gtag === 'function' && window.gtag.toString().includes('dataLayer')) {
+        console.log('[Analytics] Real gtag.js function detected');
+      } else {
+        console.warn('[Analytics] Warning: gtag function may not be the real one');
+      }
+    };
+    
+    script.onerror = () => {
+      console.error('[Analytics] Failed to load GA4 script. Check CSP and network restrictions.');
+      console.error('[Analytics] Script URL:', script.src);
+      console.error('[Analytics] This may be blocked by OpenAI\'s iframe security policies.');
+      console.error('[Analytics] Events will be queued in dataLayer but may not be sent.');
+    };
+    
+    document.head.appendChild(script);
+    console.log('[Analytics] Loading GA4 script from:', script.src);
+    
+    // Set a timeout to detect if script never loads
+    setTimeout(() => {
+      if (!isInitialized) {
+        console.error('[Analytics] Script load timeout - gtag.js may be blocked');
+        console.error('[Analytics] Check Network tab for blocked requests to googletagmanager.com');
+        console.error('[Analytics] Current dataLayer length:', window.dataLayer.length);
+      }
+    }, 5000);
   }
 }
 
@@ -84,8 +114,9 @@ export function getSessionId() {
  */
 export function trackEvent(eventName, parameters = {}) {
   if (!isInitialized || !window.gtag) {
-    // Silently fail if GA4 is not initialized (graceful degradation)
     console.warn('[Analytics] GA4 not initialized. Event not tracked:', eventName);
+    console.warn('[Analytics] isInitialized:', isInitialized, 'window.gtag exists:', !!window.gtag);
+    console.warn('[Analytics] dataLayer length:', window.dataLayer?.length || 0);
     return;
   }
 
@@ -104,6 +135,16 @@ export function trackEvent(eventName, parameters = {}) {
   try {
     window.gtag('event', eventName, eventParams);
     console.log('[Analytics] Event tracked:', eventName, eventParams);
+    console.log('[Analytics] dataLayer after event:', window.dataLayer.length);
+    
+    // Check if requests are actually being made
+    setTimeout(() => {
+      // Try to detect if gtag is making network requests
+      const img = new Image();
+      img.src = `https://www.google-analytics.com/g/collect?v=2&tid=${measurementId}&t=event&en=test&ep.test=1`;
+      img.onload = () => console.log('[Analytics] Test request succeeded - network access OK');
+      img.onerror = () => console.error('[Analytics] Test request failed - may be blocked by CSP or OpenAI');
+    }, 1000);
   } catch (error) {
     console.warn('[Analytics] Error tracking event:', error);
   }
