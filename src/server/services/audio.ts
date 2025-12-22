@@ -1451,13 +1451,18 @@ async function detectKeyWithAubio(samples: Float32Array, sampleRate: number): Pr
     
     const pitch = new Pitch("yinfft", bufferSize, hopSize, sampleRate);
     
-    // Collect pitch samples for chromagram
-    const pitchSamples: number[] = [];
+    // Collect pitch samples with energy weighting for chromagram
+    const pitchSamples: Array<{ frequency: number; energy: number }> = [];
     let processedSamples = 0;
     
-    while (processedSamples < samples.length) {
-      const chunkSize = Math.min(bufferSize, samples.length - processedSamples);
-      const chunk = samples.slice(processedSamples, processedSamples + chunkSize);
+    // Analyze longer duration for better key detection (up to 60 seconds)
+    const maxDuration = 60;
+    const maxSamples = Math.min(samples.length, sampleRate * maxDuration);
+    const analysisSamples = samples.slice(0, maxSamples);
+    
+    while (processedSamples < analysisSamples.length) {
+      const chunkSize = Math.min(bufferSize, analysisSamples.length - processedSamples);
+      const chunk = analysisSamples.slice(processedSamples, processedSamples + chunkSize);
       
       const paddedChunk = new Float32Array(bufferSize);
       paddedChunk.set(chunk, 0);
@@ -1466,7 +1471,14 @@ async function detectKeyWithAubio(samples: Float32Array, sampleRate: number): Pr
       
       // Only include valid frequencies (typical range for music: 80-2000 Hz)
       if (frequency > 80 && frequency < 2000) {
-        pitchSamples.push(frequency);
+        // Calculate energy in this chunk for weighting
+        let energy = 0;
+        for (let i = 0; i < chunk.length; i++) {
+          energy += chunk[i] * chunk[i];
+        }
+        energy = Math.sqrt(energy / chunk.length);
+        
+        pitchSamples.push({ frequency, energy });
       }
       
       processedSamples += hopSize;
@@ -1476,63 +1488,138 @@ async function detectKeyWithAubio(samples: Float32Array, sampleRate: number): Pr
       return null;
     }
     
-    // Build chromagram from detected pitches
+    // Build chromagram from detected pitches with energy weighting
     const chromagram = new Float32Array(12);
     const A4 = 440;
     const C0 = A4 * Math.pow(2, -4.75);
     
-    for (const frequency of pitchSamples) {
+    // Also include harmonics (2x, 3x frequency) for better chromagram
+    for (const { frequency, energy } of pitchSamples) {
+      // Fundamental frequency
       const h = 12 * Math.log2(frequency / C0);
       const pitchClass = Math.round(h) % 12;
       const pitchClassIndex = ((pitchClass % 12) + 12) % 12;
-      chromagram[pitchClassIndex] += 1;
+      chromagram[pitchClassIndex] += energy;
+      
+      // Second harmonic (octave + fifth)
+      const h2 = 12 * Math.log2((frequency * 2) / C0);
+      const pitchClass2 = Math.round(h2) % 12;
+      const pitchClassIndex2 = ((pitchClass2 % 12) + 12) % 12;
+      chromagram[pitchClassIndex2] += energy * 0.5; // Weight harmonics less
+      
+      // Third harmonic (octave + major third)
+      const h3 = 12 * Math.log2((frequency * 3) / C0);
+      const pitchClass3 = Math.round(h3) % 12;
+      const pitchClassIndex3 = ((pitchClass3 % 12) + 12) % 12;
+      chromagram[pitchClassIndex3] += energy * 0.3;
+    }
+    
+    // Apply smoothing to chromagram (reduce noise)
+    const smoothed = new Float32Array(12);
+    for (let i = 0; i < 12; i++) {
+      const prev = chromagram[(i - 1 + 12) % 12];
+      const curr = chromagram[i];
+      const next = chromagram[(i + 1) % 12];
+      smoothed[i] = (prev * 0.2 + curr * 0.6 + next * 0.2);
     }
     
     // Normalize chromagram
-    const sum = chromagram.reduce((a, b) => a + b, 0);
+    const sum = smoothed.reduce((a, b) => a + b, 0);
     if (sum > 0) {
       for (let i = 0; i < 12; i++) {
-        chromagram[i] /= sum;
+        smoothed[i] /= sum;
       }
     }
     
     // Use Krumhansl-Schmuckler algorithm to find key
     const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-    let bestKey = 0;
-    let bestScale: "major" | "minor" = "major";
-    let bestScore = -Infinity;
+    const scores: Array<{ key: number; scale: "major" | "minor"; score: number }> = [];
     
     for (let key = 0; key < 12; key++) {
       // Test major
       let majorScore = 0;
       for (let i = 0; i < 12; i++) {
         const chromaIndex = (i - key + 12) % 12;
-        majorScore += chromagram[chromaIndex] * MAJOR_PROFILE[i];
+        majorScore += smoothed[chromaIndex] * MAJOR_PROFILE[i];
       }
+      scores.push({ key, scale: "major", score: majorScore });
       
       // Test minor
       let minorScore = 0;
       for (let i = 0; i < 12; i++) {
         const chromaIndex = (i - key + 12) % 12;
-        minorScore += chromagram[chromaIndex] * MINOR_PROFILE[i];
+        minorScore += smoothed[chromaIndex] * MINOR_PROFILE[i];
+      }
+      scores.push({ key, scale: "minor", score: minorScore });
+    }
+    
+    // Sort by score
+    scores.sort((a, b) => b.score - a.score);
+    
+    const best = scores[0];
+    const secondBest = scores[1];
+    
+    // Additional validation: analyze scale degrees to confirm major vs minor
+    // Major scale degrees: 0, 2, 4, 5, 7, 9, 11 (C, D, E, F, G, A, B)
+    // Minor scale degrees: 0, 2, 3, 5, 7, 8, 10 (C, D, Eb, F, G, Ab, Bb)
+    // Key difference: 3rd (index 3 vs 4), 6th (index 8 vs 9), 7th (index 10 vs 11)
+    
+    if (best.key === secondBest.key) {
+      // Same key, different scale - analyze scale degrees
+      const key = best.key;
+      const majorThird = smoothed[(key + 4) % 12]; // Major 3rd
+      const minorThird = smoothed[(key + 3) % 12]; // Minor 3rd
+      const majorSixth = smoothed[(key + 9) % 12]; // Major 6th
+      const minorSixth = smoothed[(key + 8) % 12]; // Minor 6th
+      const majorSeventh = smoothed[(key + 11) % 12]; // Major 7th
+      const minorSeventh = smoothed[(key + 10) % 12]; // Minor 7th
+      
+      // Count evidence for major vs minor
+      let majorEvidence = 0;
+      let minorEvidence = 0;
+      
+      if (majorThird > minorThird * 1.2) majorEvidence++;
+      else if (minorThird > majorThird * 1.2) minorEvidence++;
+      
+      if (majorSixth > minorSixth * 1.2) majorEvidence++;
+      else if (minorSixth > majorSixth * 1.2) minorEvidence++;
+      
+      if (majorSeventh > minorSeventh * 1.2) majorEvidence++;
+      else if (minorSeventh > majorSeventh * 1.2) minorEvidence++;
+      
+      // If scale degree analysis conflicts with Krumhansl-Schmuckler, use scale degrees
+      // (they're more reliable for distinguishing major vs minor)
+      if (best.scale === "minor" && majorEvidence >= 2) {
+        return {
+          key: noteNames[best.key],
+          scale: "major",
+        };
       }
       
-      if (majorScore > bestScore) {
-        bestScore = majorScore;
-        bestKey = key;
-        bestScale = "major";
+      if (best.scale === "major" && minorEvidence >= 2) {
+        return {
+          key: noteNames[best.key],
+          scale: "minor",
+        };
       }
-      
-      if (minorScore > bestScore) {
-        bestScore = minorScore;
-        bestKey = key;
-        bestScale = "minor";
+    }
+    
+    // If scores are very close (within 3%), prefer major (more common in popular music)
+    // This helps avoid false minor detections when chromagram is ambiguous
+    if (best.scale === "minor" && secondBest.scale === "major" && best.key === secondBest.key) {
+      const scoreDiff = (best.score - secondBest.score) / best.score;
+      if (scoreDiff < 0.03) {
+        // Scores are too close, prefer major
+        return {
+          key: noteNames[best.key],
+          scale: "major",
+        };
       }
     }
     
     return {
-      key: noteNames[bestKey],
-      scale: bestScale,
+      key: noteNames[best.key],
+      scale: best.scale,
     };
   } catch (error) {
     console.warn("[Key Detection] Aubio.js failed, falling back to custom algorithm:", error);
