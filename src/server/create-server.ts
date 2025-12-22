@@ -147,6 +147,7 @@ export const createServer = () => {
       "https://*.oaistatic.com",
       "https://files.openai.com",
       "https://cdn.openai.com",
+      "https://chatgpt-com.web-sandbox.oaiusercontent.com",
       "https://*.blob.core.windows.net",
       "https://www.googletagmanager.com", // GA4 script loading and API calls
       "https://www.google-analytics.com",
@@ -158,6 +159,7 @@ export const createServer = () => {
       "https://*.oaistatic.com",
       "https://files.openai.com",
       "https://cdn.openai.com",
+      "https://chatgpt-com.web-sandbox.oaiusercontent.com",
       "https://chatgpt.com",
       "https://*.blob.core.windows.net",
       "https://www.googletagmanager.com", // GA4 script loading

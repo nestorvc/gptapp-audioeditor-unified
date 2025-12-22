@@ -152,6 +152,37 @@ export async function trackWidgetEvent(
 }
 
 /**
+ * Get MCP-specific event name for tools that don't use UI templates
+ */
+function getMCPSpecificEventName(toolName: string): string | null {
+  // Tools that use UI templates don't get specific events
+  if (toolName === "audio.open_audio_editor" || toolName === "audio.open_ringtone_editor") {
+    return null;
+  }
+
+  // Map tool names to specific MCP events
+  if (toolName === "audio.detect_bpm_and_key") {
+    return "mcp_bpm_detection_started";
+  }
+  if (toolName === "audio.separate_voice_from_music" || 
+      toolName === "audio.remove_vocals" || 
+      toolName === "audio.extract_vocals") {
+    return "mcp_vocal_extraction_started";
+  }
+  if (toolName.startsWith("audio.convert_to_")) {
+    return "mcp_audio_conversion_started";
+  }
+  if (toolName === "audio.trim_start_of_audio" || toolName === "audio.trim_end_of_audio") {
+    return "mcp_audio_trim_started";
+  }
+  if (toolName === "audio.notify_download_link_ready") {
+    return "mcp_download_notification_sent";
+  }
+
+  return null;
+}
+
+/**
  * Track an MCP tool invocation
  */
 export async function trackMCPTool(
@@ -166,7 +197,7 @@ export async function trackMCPTool(
   const clientId = generateClientId();
   const sessionId = params.session_id || `mcp_${Date.now()}_${randomUUID()}`;
 
-  // Track tool invocation
+  // Track tool invocation (always)
   await sendGA4Event(
     "mcp_tool_invoked",
     {
@@ -176,6 +207,20 @@ export async function trackMCPTool(
     clientId,
     sessionId
   );
+
+  // Track MCP-specific event for tools that don't use UI templates
+  const mcpSpecificEvent = getMCPSpecificEventName(toolName);
+  if (mcpSpecificEvent) {
+    await sendGA4Event(
+      mcpSpecificEvent,
+      {
+        tool_name: toolName,
+        ...params,
+      },
+      clientId,
+      sessionId
+    );
+  }
 
   // Track success/failure if result provided
   if (result) {

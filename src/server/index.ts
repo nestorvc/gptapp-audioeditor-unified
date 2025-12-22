@@ -260,16 +260,42 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
         downloadUrl: result.downloadUrl,
       });
 
-      await trackEvent("dual_track_exported", {
-        format: result.format,
-        duration: parseFloat(duration as string),
-        vocals_enabled: vocalsEnabled === "true" || vocalsEnabled === true,
-        music_enabled: musicEnabled === "true" || musicEnabled === true,
-        fade_in_enabled: fadeInEnabled === "true" || fadeInEnabled === true,
-        fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
-        processing_time_ms: Date.now() - processingStartTime,
-        source: "api",
-      });
+      const vocalsEnabledBool = vocalsEnabled === "true" || vocalsEnabled === true;
+      const musicEnabledBool = musicEnabled === "true" || musicEnabled === true;
+
+      if (vocalsEnabledBool && musicEnabledBool) {
+        // Both tracks enabled
+        await trackEvent("fe_dual_track_exported", {
+          format: result.format,
+          duration: parseFloat(duration as string),
+          vocals_enabled: true,
+          music_enabled: true,
+          fade_in_enabled: fadeInEnabled === "true" || fadeInEnabled === true,
+          fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+          processing_time_ms: Date.now() - processingStartTime,
+          source: "api",
+        });
+      } else if (vocalsEnabledBool && !musicEnabledBool) {
+        // Only vocals enabled
+        await trackEvent("fe_only_vocal_track_exported", {
+          format: result.format,
+          duration: parseFloat(duration as string),
+          fade_in_enabled: fadeInEnabled === "true" || fadeInEnabled === true,
+          fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+          processing_time_ms: Date.now() - processingStartTime,
+          source: "api",
+        });
+      } else if (!vocalsEnabledBool && musicEnabledBool) {
+        // Only music enabled
+        await trackEvent("fe_only_music_track_exported", {
+          format: result.format,
+          duration: parseFloat(duration as string),
+          fade_in_enabled: fadeInEnabled === "true" || fadeInEnabled === true,
+          fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+          processing_time_ms: Date.now() - processingStartTime,
+          source: "api",
+        });
+      }
 
       res.json({
         downloadUrl: result.downloadUrl,
@@ -427,7 +453,7 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
       audioUrl,
     });
 
-    await trackEvent("bpm_detection_completed", {
+    await trackEvent("fe_bpm_detection_completed", {
       bpm: result.bpm ?? null,
       key: result.key ?? null,
       processing_time_ms: Date.now() - startTime,
@@ -442,7 +468,7 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
     console.error("[BPM/Key Detection] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to detect BPM and key";
     
-    await trackEvent("bpm_detection_error", {
+    await trackEvent("fe_bpm_detection_error", {
       error_type: "detection_failed",
       error_message: errorMessage,
       processing_time_ms: Date.now() - startTime,
@@ -526,7 +552,7 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
       musicFileName: result.musicFileName,
     });
 
-    await trackEvent("vocal_extraction_completed", {
+    await trackEvent("fe_vocal_extraction_completed", {
       vocals_file_name: result.vocalsFileName,
       music_file_name: result.musicFileName,
       processing_time_ms: Date.now() - startTime,
@@ -544,7 +570,7 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
     console.error("[Extract Vocals] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to extract vocals";
     
-    await trackEvent("vocal_extraction_error", {
+    await trackEvent("fe_vocal_extraction_error", {
       error_type: "extraction_failed",
       error_message: errorMessage,
       source: "api",

@@ -17,7 +17,6 @@ import {
   trackAudioExported,
   trackFadeToggled,
   trackPlayback,
-  trackAudioSeeked,
   trackFormatChanged,
   trackError,
 } from "../../utils/analytics";
