@@ -565,6 +565,13 @@ async function handleAnalyticsTrack(req: Request, res: Response): Promise<void> 
     return;
   }
 
+  console.log("[Analytics] Received event from frontend:", {
+    eventName,
+    hasParameters: !!parameters,
+    hasSessionId: !!sessionId,
+    parameterKeys: parameters ? Object.keys(parameters) : [],
+  });
+
   try {
     await trackWidgetEvent(eventName, parameters || {}, sessionId);
     res.json({ success: true });

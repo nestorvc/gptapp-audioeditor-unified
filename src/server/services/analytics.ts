@@ -14,6 +14,20 @@ const GA4_MEASUREMENT_ID = process.env.GOOGLE_ANALYTICS_ID;
 const GA4_API_SECRET = process.env.GOOGLE_ANALYTICS_API_SECRET; // Optional, for enhanced measurement
 const GA4_ENDPOINT = "https://www.google-analytics.com/mp/collect";
 
+// Log GA4 configuration at startup
+if (GA4_MEASUREMENT_ID) {
+  console.log("[Analytics] GA4 configured:", {
+    measurementId: GA4_MEASUREMENT_ID,
+    hasApiSecret: !!GA4_API_SECRET,
+    endpoint: GA4_ENDPOINT,
+  });
+  if (!GA4_API_SECRET) {
+    console.warn("[Analytics] GOOGLE_ANALYTICS_API_SECRET not set. Consider setting it for enhanced measurement.");
+  }
+} else {
+  console.warn("[Analytics] GOOGLE_ANALYTICS_ID not set. Analytics tracking disabled.");
+}
+
 // In-memory client ID storage (for server-side tracking)
 // In production, consider using Redis or a database for persistence
 const clientIdCache = new Map<string, string>();
@@ -54,6 +68,7 @@ async function sendGA4Event(
 ): Promise<void> {
   if (!GA4_MEASUREMENT_ID) {
     console.warn("[Analytics] GA4_MEASUREMENT_ID not set. Event not tracked:", eventName);
+    console.warn("[Analytics] Set GOOGLE_ANALYTICS_ID environment variable to enable tracking.");
     return;
   }
 
@@ -63,6 +78,7 @@ async function sendGA4Event(
   }
 
   // Build GA4 event payload
+  // GA4 Measurement Protocol format: https://developers.google.com/analytics/devguides/collection/protocol/ga4
   const payload: any = {
     client_id: clientId,
     events: [
@@ -71,16 +87,27 @@ async function sendGA4Event(
         params: {
           ...parameters,
           ...(sessionId && { session_id: sessionId }),
-          timestamp_micros: Date.now() * 1000, // GA4 expects microseconds
+          // GA4 expects timestamp_micros as a string representing microseconds since Unix epoch
+          timestamp_micros: String(Date.now() * 1000),
         },
       },
     ],
   };
 
   // Build URL with measurement ID
+  // Note: API secret is optional but recommended for server-side tracking
   const url = `${GA4_ENDPOINT}?measurement_id=${GA4_MEASUREMENT_ID}${GA4_API_SECRET ? `&api_secret=${GA4_API_SECRET}` : ""}`;
 
   try {
+    console.log("[Analytics] Sending event to GA4:", {
+      eventName,
+      measurementId: GA4_MEASUREMENT_ID,
+      hasApiSecret: !!GA4_API_SECRET,
+      url: url.replace(GA4_API_SECRET || "", "[REDACTED]"),
+      clientId,
+      sessionId,
+    });
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -89,12 +116,22 @@ async function sendGA4Event(
       body: JSON.stringify(payload),
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.warn(`[Analytics] GA4 API error (${response.status}):`, errorText);
+      console.error(`[Analytics] GA4 API error (${response.status}):`, responseText);
+      console.error("[Analytics] Request payload:", JSON.stringify(payload, null, 2));
+    } else {
+      console.log(`[Analytics] Event sent successfully: ${eventName} (Status: ${response.status})`);
+      if (responseText) {
+        console.log("[Analytics] GA4 response:", responseText);
+      }
     }
   } catch (error) {
-    console.warn("[Analytics] Error sending event to GA4:", error);
+    console.error("[Analytics] Error sending event to GA4:", error);
+    if (error instanceof Error) {
+      console.error("[Analytics] Error details:", error.message, error.stack);
+    }
   }
 }
 
