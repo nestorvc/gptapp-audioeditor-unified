@@ -216,10 +216,10 @@ body {
 .marquee-content {
   display: inline-block;
   white-space: nowrap;
-  padding-right: 40px;
-  animation: marquee 15s linear infinite;
+  animation: marquee 20s linear infinite;
   position: relative;
   z-index: 1;
+  will-change: transform;
 }
 
 .marquee-content:hover {
@@ -232,7 +232,6 @@ body {
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding-right: 0;
   animation: none;
   gap: 8px;
 }
@@ -242,7 +241,7 @@ body {
     transform: translateX(0);
   }
   100% {
-    transform: translateX(calc(-50% - 20px));
+    transform: translateX(-50%);
   }
 }
 

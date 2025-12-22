@@ -512,40 +512,58 @@ export function AudioEditor() {
     }
     
     const marqueeText = formatMarqueeText();
+    
+    // If no text, clear duplicated text
+    if (!marqueeText || marqueeText.trim() === '') {
+      setDuplicatedText('');
+      return;
+    }
+    
     if (marqueeContentRef.current) {
       const updateDuplicatedText = () => {
         const content = marqueeContentRef.current;
         if (content) {
           const container = content.parentElement;
-          if (container) {
-            // First render with original text to measure
+          if (container && container.offsetWidth > 0) {
+            // Create a temporary element to measure the original text width
             const tempSpan = document.createElement('span');
             tempSpan.textContent = marqueeText;
             tempSpan.style.position = 'absolute';
             tempSpan.style.visibility = 'hidden';
             tempSpan.style.whiteSpace = 'nowrap';
+            tempSpan.style.fontSize = window.getComputedStyle(content).fontSize;
+            tempSpan.style.fontFamily = window.getComputedStyle(content).fontFamily;
+            tempSpan.style.fontWeight = window.getComputedStyle(content).fontWeight;
             document.body.appendChild(tempSpan);
             const textWidth = tempSpan.offsetWidth;
             document.body.removeChild(tempSpan);
             
             const containerWidth = container.offsetWidth;
             
-            // If text is shorter than 2x container width, duplicate it
-            if (textWidth < containerWidth * 2) {
-              const repetitions = Math.ceil((containerWidth * 2) / textWidth) + 1;
-              setDuplicatedText((marqueeText + " • ").repeat(repetitions));
+            // For seamless scrolling, we need at least 2 copies of the text
+            // Calculate how many copies we need to fill 2x container width
+            if (textWidth > 0) {
+              const copiesNeeded = Math.max(2, Math.ceil((containerWidth * 2.5) / textWidth));
+              const separator = " • ";
+              setDuplicatedText((marqueeText + separator).repeat(copiesNeeded));
             } else {
-              // For long text, duplicate once to create seamless loop
+              // Fallback: just duplicate once
               setDuplicatedText(marqueeText + " • " + marqueeText);
             }
           }
         }
       };
       
-      // Wait for DOM to update
-      setTimeout(updateDuplicatedText, 50);
+      // Use requestAnimationFrame for better timing
+      const rafId = requestAnimationFrame(() => {
+        setTimeout(updateDuplicatedText, 0);
+      });
+      
       window.addEventListener('resize', updateDuplicatedText);
-      return () => window.removeEventListener('resize', updateDuplicatedText);
+      return () => {
+        cancelAnimationFrame(rafId);
+        window.removeEventListener('resize', updateDuplicatedText);
+      };
     }
   }, [audioSampleRate, bpm, key, isDetectingBPMKey]);
 
