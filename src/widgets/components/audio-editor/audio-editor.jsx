@@ -370,6 +370,17 @@ export function AudioEditor() {
   const [uploadError, setUploadError] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const sendFollowUpMessage = useSendFollowUpMessage();
+  // Vocal extraction state
+  const [isExtractingVocals, setIsExtractingVocals] = useState(false);
+  const [isVocalsMode, setIsVocalsMode] = useState(false);
+  const [vocalsAudioUrl, setVocalsAudioUrl] = useState(null);
+  const [musicAudioUrl, setMusicAudioUrl] = useState(null);
+  const [vocalsEnabled, setVocalsEnabled] = useState(true);
+  const [musicEnabled, setMusicEnabled] = useState(true);
+  const vocalsBufferRef = useRef(null);
+  const musicBufferRef = useRef(null);
+  const [vocalsWaveformData, setVocalsWaveformData] = useState([]);
+  const [musicWaveformData, setMusicWaveformData] = useState([]);
 
   useEffect(() => {
     setGenerationError(null);
@@ -776,6 +787,17 @@ export function AudioEditor() {
     });
 
     setUploadError(null);
+
+    // Reset vocals mode when new audio is uploaded
+    setIsVocalsMode(false);
+    setVocalsAudioUrl(null);
+    setMusicAudioUrl(null);
+    setVocalsWaveformData([]);
+    setMusicWaveformData([]);
+    setVocalsEnabled(true);
+    setMusicEnabled(true);
+    vocalsBufferRef.current = null;
+    musicBufferRef.current = null;
 
     if (!file) {
       console.warn('⚠️ [FILE UPLOAD] No file provided');
@@ -1332,91 +1354,169 @@ export function AudioEditor() {
           await audioContext.resume();
         }
 
-        // Use dynamic audio URL (priority: uploaded > toolOutput > default)
-        const audioSource = getAudioSource();
-        if (!audioSource) {
-          setIsPlaying(false);
-          return;
-        }
-        
-        let arrayBuffer;
-        // Use FileReader for uploaded files to avoid CSP issues with blob URLs
-        if (audioSource.isUploaded && audioSource.file) {
-          arrayBuffer = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(audioSource.file);
-          });
-        } else {
-          // Use fetch for external URLs (toolOutput)
-          const response = await fetch(audioSource.url);
-          arrayBuffer = await response.arrayBuffer();
-        }
-        
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        const source = audioContext.createBufferSource();
-        const gainNode = audioContext.createGain();
-        
-        source.buffer = audioBuffer;
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        sourceNodeRef.current = source;
-        gainNodeRef.current = gainNode;
-
         const startTime = selectedStart;
         const endTime = selectedEnd;
         const duration = endTime - startTime;
 
-        // Apply fade in/out if enabled
-        if (fadeInEnabled && fadeInTime > 0) {
-          gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-          gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + fadeInTime);
-        } else {
-          gainNode.gain.setValueAtTime(1, audioContext.currentTime);
-        }
+        if (isVocalsMode && vocalsBufferRef.current && musicBufferRef.current) {
+          // Dual track playback
+          const vocalsSource = audioContext.createBufferSource();
+          const musicSource = audioContext.createBufferSource();
+          const vocalsGain = audioContext.createGain();
+          const musicGain = audioContext.createGain();
+          const merger = audioContext.createChannelMerger(2);
 
-        if (fadeOutEnabled && fadeOutTime > 0) {
-          const fadeOutStart = audioContext.currentTime + duration - fadeOutTime;
-          gainNode.gain.setValueAtTime(1, fadeOutStart);
-          gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
-        }
+          vocalsSource.buffer = vocalsBufferRef.current;
+          musicSource.buffer = musicBufferRef.current;
 
-        // Update trimmer position during playback
-        const playbackStart = audioContext.currentTime;
-        playbackStartTimeRef.current = playbackStart;
-        
-        const updatePosition = () => {
-          if (!isPlaying || !sourceNodeRef.current) return;
-          
-          const elapsed = audioContext.currentTime - playbackStart;
-          const progress = Math.min(elapsed / duration, 1);
-          
-          const currentPosition = startTrim + (endTrim - startTrim) * progress;
-          setTrimmerPosition(currentPosition);
-          
-          if (progress >= 1) {
+          vocalsSource.connect(vocalsGain);
+          musicSource.connect(musicGain);
+          vocalsGain.connect(merger, 0, 0);
+          musicGain.connect(merger, 0, 1);
+          merger.connect(audioContext.destination);
+
+          // Apply toggle states
+          vocalsGain.gain.setValueAtTime(vocalsEnabled ? 1 : 0, audioContext.currentTime);
+          musicGain.gain.setValueAtTime(musicEnabled ? 1 : 0, audioContext.currentTime);
+
+          // Apply fade in/out if enabled
+          if (fadeInEnabled && fadeInTime > 0) {
+            const fadeInGain = vocalsEnabled && musicEnabled ? 1 : (vocalsEnabled || musicEnabled ? 1 : 0);
+            vocalsGain.gain.setValueAtTime(0, audioContext.currentTime);
+            musicGain.gain.setValueAtTime(0, audioContext.currentTime);
+            vocalsGain.gain.linearRampToValueAtTime(vocalsEnabled ? fadeInGain : 0, audioContext.currentTime + fadeInTime);
+            musicGain.gain.linearRampToValueAtTime(musicEnabled ? fadeInGain : 0, audioContext.currentTime + fadeInTime);
+          }
+
+          if (fadeOutEnabled && fadeOutTime > 0) {
+            const fadeOutStart = audioContext.currentTime + duration - fadeOutTime;
+            const fadeOutGain = vocalsEnabled && musicEnabled ? 1 : (vocalsEnabled || musicEnabled ? 1 : 0);
+            vocalsGain.gain.setValueAtTime(vocalsEnabled ? fadeOutGain : 0, fadeOutStart);
+            musicGain.gain.setValueAtTime(musicEnabled ? fadeOutGain : 0, fadeOutStart);
+            vocalsGain.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+            musicGain.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+          }
+
+          sourceNodeRef.current = vocalsSource; // Store one for cleanup
+          gainNodeRef.current = vocalsGain;
+
+          const playbackStart = audioContext.currentTime;
+          playbackStartTimeRef.current = playbackStart;
+
+          const updatePosition = () => {
+            if (!isPlaying) return;
+            
+            const elapsed = audioContext.currentTime - playbackStart;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            const currentPosition = startTrim + (endTrim - startTrim) * progress;
+            setTrimmerPosition(currentPosition);
+            
+            if (progress >= 1) {
+              setIsPlaying(false);
+              setTrimmerPosition(endTrim);
+              return;
+            }
+            
+            animationFrameRef.current = requestAnimationFrame(updatePosition);
+          };
+
+          vocalsSource.start(playbackStart, startTime);
+          musicSource.start(playbackStart, startTime);
+          vocalsSource.stop(playbackStart + duration);
+          musicSource.stop(playbackStart + duration);
+
+          const handleEnded = () => {
             setIsPlaying(false);
             setTrimmerPosition(endTrim);
+            sourceNodeRef.current = null;
+            playbackStartTimeRef.current = null;
+          };
+
+          vocalsSource.onended = handleEnded;
+          musicSource.onended = handleEnded;
+
+          updatePosition();
+        } else {
+          // Single track playback (original behavior)
+          const audioSource = getAudioSource();
+          if (!audioSource) {
+            setIsPlaying(false);
             return;
           }
           
-          animationFrameRef.current = requestAnimationFrame(updatePosition);
-        };
+          let arrayBuffer;
+          if (audioSource.isUploaded && audioSource.file) {
+            arrayBuffer = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.onerror = reject;
+              reader.readAsArrayBuffer(audioSource.file);
+            });
+          } else {
+            const response = await fetch(audioSource.url);
+            arrayBuffer = await response.arrayBuffer();
+          }
+          
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-        source.start(playbackStart, startTime);
-        source.stop(playbackStart + duration);
-        
-        source.onended = () => {
-          setIsPlaying(false);
-          setTrimmerPosition(endTrim);
-          sourceNodeRef.current = null;
-          playbackStartTimeRef.current = null;
-        };
+          const source = audioContext.createBufferSource();
+          const gainNode = audioContext.createGain();
+          
+          source.buffer = audioBuffer;
+          source.connect(gainNode);
+          gainNode.connect(audioContext.destination);
 
-        updatePosition();
+          sourceNodeRef.current = source;
+          gainNodeRef.current = gainNode;
+
+          // Apply fade in/out if enabled
+          if (fadeInEnabled && fadeInTime > 0) {
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + fadeInTime);
+          } else {
+            gainNode.gain.setValueAtTime(1, audioContext.currentTime);
+          }
+
+          if (fadeOutEnabled && fadeOutTime > 0) {
+            const fadeOutStart = audioContext.currentTime + duration - fadeOutTime;
+            gainNode.gain.setValueAtTime(1, fadeOutStart);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+          }
+
+          const playbackStart = audioContext.currentTime;
+          playbackStartTimeRef.current = playbackStart;
+          
+          const updatePosition = () => {
+            if (!isPlaying || !sourceNodeRef.current) return;
+            
+            const elapsed = audioContext.currentTime - playbackStart;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            const currentPosition = startTrim + (endTrim - startTrim) * progress;
+            setTrimmerPosition(currentPosition);
+            
+            if (progress >= 1) {
+              setIsPlaying(false);
+              setTrimmerPosition(endTrim);
+              return;
+            }
+            
+            animationFrameRef.current = requestAnimationFrame(updatePosition);
+          };
+
+          source.start(playbackStart, startTime);
+          source.stop(playbackStart + duration);
+          
+          source.onended = () => {
+            setIsPlaying(false);
+            setTrimmerPosition(endTrim);
+            sourceNodeRef.current = null;
+            playbackStartTimeRef.current = null;
+          };
+
+          updatePosition();
+        }
       } catch (error) {
         console.error("Error playing audio:", error);
         setIsPlaying(false);
@@ -1428,7 +1528,7 @@ export function AudioEditor() {
 
     // Return cleanup function to stop playback when effect re-runs (e.g., trim changes) or component unmounts
     return cleanup;
-  }, [isPlaying, selectedStart, selectedEnd, fadeInEnabled, fadeOutEnabled, fadeInTime, fadeOutTime, startTrim, endTrim, uploadedAudioUrl, toolOutput?.audioUrl]);
+  }, [isPlaying, selectedStart, selectedEnd, fadeInEnabled, fadeOutEnabled, fadeInTime, fadeOutTime, startTrim, endTrim, uploadedAudioUrl, toolOutput?.audioUrl, isVocalsMode, vocalsEnabled, musicEnabled]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1474,14 +1574,175 @@ export function AudioEditor() {
     }
   };
 
+  const handleExtractVocals = async () => {
+    if (isLoading || isExtractingVocals || isVocalsMode) {
+      return;
+    }
+
+    setIsExtractingVocals(true);
+    setGenerationError(null);
+    setGenerationSuccess("");
+
+    try {
+      const audioSource = getAudioSource();
+      if (!audioSource) {
+        throw new Error("No audio source available");
+      }
+
+      const runtimeApiUrl = typeof window !== 'undefined' && window.__API_BASE_URL__;
+      const endpoint = `${runtimeApiUrl.replace(/\/$/, "")}/api/extract-vocals`;
+
+      debugLog("🎤 [EXTRACT VOCALS] Starting vocal extraction:", {
+        audioSource: audioSource.isUploaded ? "uploaded file" : "external URL",
+      });
+
+      let response;
+
+      if (audioSource.isUploaded && audioSource.file) {
+        // Upload file to S3 first, then send S3 URL
+        debugLog("📤 [EXTRACT VOCALS] Uploading file to S3 first...");
+        
+        const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName: audioSource.file.name,
+            contentType: audioSource.file.type || "audio/mpeg",
+          }),
+        });
+
+        if (!presignedUrlResponse.ok) {
+          throw new Error("Failed to get presigned upload URL");
+        }
+
+        const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
+
+        const s3UploadResponse = await fetch(uploadUrl, {
+          method: "PUT",
+          body: audioSource.file,
+          headers: {
+            "Content-Type": audioSource.file.type || "audio/mpeg",
+          },
+        });
+
+        if (!s3UploadResponse.ok) {
+          throw new Error("Failed to upload file to S3");
+        }
+
+        debugLog("✅ [EXTRACT VOCALS] File uploaded to S3:", publicUrl);
+
+        // Call extract vocals endpoint with S3 URL
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            audioUrl: publicUrl,
+            trackName: trackName || uploadedFileName || "audio-track",
+          }),
+        });
+      } else if (audioSource.url) {
+        // Call extract vocals endpoint with audio URL
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            audioUrl: audioSource.url,
+            trackName: trackName || audioSource.name || "audio-track",
+          }),
+        });
+      } else {
+        throw new Error("No valid audio source available");
+      }
+
+      if (!response.ok) {
+        let errorMessage = "Server failed to extract vocals.";
+        try {
+          const errorData = await response.json();
+          if (errorData?.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // Fallback to status-based message
+          if (response.status >= 500) {
+            errorMessage = "Server error. Please try again later.";
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+
+      debugLog("✅ [EXTRACT VOCALS] Extraction complete:", {
+        vocalsUrl: result.vocalsUrl,
+        musicUrl: result.musicUrl,
+      });
+
+      // Load both audio buffers and generate waveforms
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Load vocals
+      const vocalsResponse = await fetch(result.vocalsUrl);
+      const vocalsArrayBuffer = await vocalsResponse.arrayBuffer();
+      const vocalsBuffer = await audioContext.decodeAudioData(vocalsArrayBuffer);
+      vocalsBufferRef.current = vocalsBuffer;
+
+      // Load music
+      const musicResponse = await fetch(result.musicUrl);
+      const musicArrayBuffer = await musicResponse.arrayBuffer();
+      const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
+      musicBufferRef.current = musicBuffer;
+
+      // Generate waveforms
+      const vocalsWaveform = await generateWaveform(vocalsBuffer);
+      const musicWaveform = await generateWaveform(musicBuffer);
+
+      setVocalsWaveformData(vocalsWaveform);
+      setMusicWaveformData(musicWaveform);
+      setVocalsAudioUrl(result.vocalsUrl);
+      setMusicAudioUrl(result.musicUrl);
+
+      // Set vocals mode
+      setIsVocalsMode(true);
+      setVocalsEnabled(true);
+      setMusicEnabled(true);
+
+      // Update total duration to match vocals buffer (they should be the same)
+      setTotalDuration(vocalsBuffer.duration);
+
+      debugLog("🎵 [EXTRACT VOCALS] Audio buffers loaded and waveforms generated");
+    } catch (error) {
+      console.error("❌ [EXTRACT VOCALS] Failed to extract vocals:", error);
+      const message =
+        error?.message && typeof error.message === "string"
+          ? error.message
+          : "Something went wrong while extracting vocals.";
+      setGenerationError(message);
+    } finally {
+      setIsExtractingVocals(false);
+    }
+  };
+
   const handleExportAudio = async () => {
     if (isLoading || isGenerating || !rightsConfirmed) {
       return;
     }
 
-    if (!audioBufferRef.current) {
-      setGenerationError("Audio is not ready yet. Please wait for the waveform to finish loading.");
-      return;
+    if (isVocalsMode) {
+      if (!vocalsBufferRef.current || !musicBufferRef.current) {
+        setGenerationError("Audio tracks are not ready yet. Please wait for the waveforms to finish loading.");
+        return;
+      }
+    } else {
+      if (!audioBufferRef.current) {
+        setGenerationError("Audio is not ready yet. Please wait for the waveform to finish loading.");
+        return;
+      }
     }
 
     setIsGenerating(true);
@@ -1493,18 +1754,15 @@ export function AudioEditor() {
     const endpoint = `${runtimeApiUrl.replace(/\/$/, "")}/api/audio-process`;
 
     try {
-      const audioSource = getAudioSource();
-      if (!audioSource) {
-        throw new Error("No audio source available");
-      }
-
-      const totalDuration = audioBufferRef.current.duration;
+      const totalDuration = isVocalsMode 
+        ? (vocalsBufferRef.current?.duration || 0)
+        : (audioBufferRef.current?.duration || 0);
       // startTrim and endTrim are normalized (0-1), convert to seconds
       const startTime = startTrim * totalDuration;
       const duration = (endTrim - startTrim) * totalDuration;
 
       debugLog("📤 [AUDIO EXPORT] Preparing server-side processing:", {
-        audioSource: audioSource.isUploaded ? "uploaded file" : "external URL",
+        mode: isVocalsMode ? "dual track" : "single track",
         startTime: `${startTime.toFixed(2)}s`,
         duration: `${duration.toFixed(2)}s`,
         format: outputFormat,
@@ -1516,7 +1774,37 @@ export function AudioEditor() {
 
       let response;
 
-      if (audioSource.isUploaded && audioSource.file) {
+      if (isVocalsMode && vocalsAudioUrl && musicAudioUrl) {
+        // Dual track export
+        const params = new URLSearchParams();
+        params.append("vocalsUrl", vocalsAudioUrl);
+        params.append("musicUrl", musicAudioUrl);
+        params.append("vocalsEnabled", String(vocalsEnabled));
+        params.append("musicEnabled", String(musicEnabled));
+        params.append("format", outputFormat);
+        params.append("trackName", sanitizeFileName(trackName || uploadedFileName || "audio-track"));
+        params.append("startTime", startTime.toString());
+        params.append("duration", duration.toString());
+        params.append("fadeInEnabled", String(fadeInEnabled));
+        params.append("fadeInDuration", fadeInTime.toString());
+        params.append("fadeOutEnabled", String(fadeOutEnabled));
+        params.append("fadeOutDuration", fadeOutTime.toString());
+
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
+      } else if (!isVocalsMode) {
+        // Single track export (original behavior)
+        const audioSource = getAudioSource();
+        if (!audioSource) {
+          throw new Error("No audio source available");
+        }
+
+        if (audioSource.isUploaded && audioSource.file) {
         // Upload file directly to S3 first, then send S3 URL + processing parameters
         debugLog("📤 [AUDIO EXPORT] Uploading file to S3 first...");
         
@@ -1592,8 +1880,11 @@ export function AudioEditor() {
           },
           body: params.toString(),
         });
+        } else {
+          throw new Error("No valid audio source available");
+        }
       } else {
-        throw new Error("No valid audio source available");
+        throw new Error("Vocals mode is active but audio URLs are not available");
       }
 
       if (!response.ok) {
@@ -1963,6 +2254,28 @@ export function AudioEditor() {
           </svg>
         </button>
 
+        <button
+          className="upload-replace-button extract-vocals-button"
+          onClick={(e) => {
+            e.preventDefault();
+            handleExtractVocals();
+          }}
+          disabled={isExtractingVocals || isVocalsMode || isLoading}
+          aria-label="Extract vocals"
+          title={isVocalsMode ? "Vocals already extracted" : "Extract vocals"}
+        >
+          {isExtractingVocals ? (
+            <span className="loading-spinner">...</span>
+          ) : (
+            <>
+              <svg className="upload-replace-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18 2C18.5523 2 19 2.44772 19 3V15C19 15.5523 18.5523 16 18 16C17.4477 16 17 15.5523 17 15V3C17 2.44772 17.4477 2 18 2ZM11 3C11.5523 3 12 3.44772 12 4V5.5C12 6.05228 11.5523 6.5 11 6.5C10.4477 6.5 10 6.05228 10 5.5V4C10 3.44772 10.4477 3 11 3ZM14.5 5C15.0523 5 15.5 5.44772 15.5 6V12.25C15.5 12.8023 15.0523 13.25 14.5 13.25C13.9477 13.25 13.5 12.8023 13.5 12.25V6C13.5 5.44772 13.9477 5 14.5 5ZM21.5 7C22.0523 7 22.5 7.44772 22.5 8V10C22.5 10.5523 22.0523 11 21.5 11C20.9477 11 20.5 10.5523 20.5 10V8C20.5 7.44772 20.9477 7 21.5 7ZM8 10C7.17157 10 6.5 10.6716 6.5 11.5C6.5 12.3284 7.17157 13 8 13C8.82843 13 9.5 12.3284 9.5 11.5C9.5 10.6716 8.82843 10 8 10ZM4.5 11.5C4.5 9.567 6.067 8 8 8C9.933 8 11.5 9.567 11.5 11.5C11.5 13.433 9.933 15 8 15C6.067 15 4.5 13.433 4.5 11.5ZM5.14202 18.815C4.43814 19.3155 4 20.0257 4 21C4 21.5523 3.55228 22 3 22C2.44772 22 2 21.5523 2 21C2 19.3077 2.81186 18.0179 3.98298 17.1851C5.12436 16.3734 6.58924 16 8 16C9.41076 16 10.8756 16.3734 12.017 17.1851C13.1881 18.0178 14 19.3076 14 21C14 21.5523 13.5523 22 13 22C12.4477 22 12 21.5523 12 21C12 20.0257 11.5619 19.3155 10.858 18.815C10.1244 18.2933 9.08924 18 8 18C6.91076 18 5.87564 18.2933 5.14202 18.815Z" fill="currentColor"/>
+              </svg>
+              <span className="extract-vocals-text">Extract vocals</span>
+            </>
+          )}
+        </button>
+
         <div className="format-dropdown-container">
           <button
             className="format-dropdown"
@@ -2064,59 +2377,178 @@ export function AudioEditor() {
           />
         </svg>
 
-        {/* Waveform container */}
-        <div
-          className="waveform-container"
-          ref={waveformRef}
-          onMouseDown={handleWaveformStart}
-          onTouchStart={handleWaveformStart}
-        >
-          {/* Background waveform */}
-          {isLoading ? (
-            <div className="waveform-loading">Loading audio...</div>
-          ) : (
-            <>
-              <div className="waveform-background">
-                {waveformData.map((height, index) => (
-                  <div
-                    key={index}
-                    className="waveform-bar background-bar"
-                    style={{ height: `${height * 100}%` }}
-                  />
-                ))}
+        {/* Waveform container(s) */}
+        {isVocalsMode ? (
+          <div className="waveform-dual-container">
+            {/* Vocals track */}
+            <div className="waveform-track">
+              <div className="waveform-toggle-container">
+                <button
+                  className={`toggle-switch ${vocalsEnabled ? "enabled" : ""}`}
+                  onClick={() => setVocalsEnabled(!vocalsEnabled)}
+                  aria-label="Toggle vocals track"
+                >
+                  <div className="toggle-slider" />
+                </button>
+                <span className="waveform-track-label">Vocals</span>
               </div>
+              <div
+                className="waveform-container"
+                ref={waveformRef}
+                onMouseDown={handleWaveformStart}
+                onTouchStart={handleWaveformStart}
+              >
+                {isLoading ? (
+                  <div className="waveform-loading">Loading audio...</div>
+                ) : (
+                  <>
+                    <div className="waveform-background">
+                      {vocalsWaveformData.map((height, index) => (
+                        <div
+                          key={index}
+                          className="waveform-bar background-bar"
+                          style={{ height: `${height * 100}%` }}
+                        />
+                      ))}
+                    </div>
+                    <div className="waveform-selected">
+                      {vocalsWaveformData.map((height, index) => {
+                        const position = index / vocalsWaveformData.length;
+                        const isInRange = position >= startTrim && position <= endTrim;
+                        if (!isInRange) return null;
+                        const totalBars = vocalsWaveformData.length;
+                        const barWidthPercent = 70 / totalBars;
+                        const leftPercent = (index / totalBars) * 100;
+                        return (
+                          <div
+                            key={`vocals-selected-${index}`}
+                            className="waveform-bar selected-bar"
+                            style={{
+                              height: `${height * 100}%`,
+                              position: 'absolute',
+                              left: `${leftPercent}%`,
+                              width: `${barWidthPercent}%`,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
 
-              {/* Selected segment overlay */}
-              <div className="waveform-selected">
-                {waveformData.map((height, index) => {
-                  const position = index / waveformData.length;
-                  const isInRange = position >= startTrim && position <= endTrim;
-                  
-                  if (!isInRange) return null;
-                  
-                  // Calculate exact position to align with background bars
-                  // Use the same percentage distribution as flex (flex: 1 distributes evenly)
-                  const totalBars = waveformData.length;
-                  const barWidthPercent = 70 / totalBars;
-                  const leftPercent = (index / totalBars) * 100;
-                  
-                  return (
-                    <div
-                      key={`selected-${index}`}
-                      className="waveform-bar selected-bar"
-                      style={{
-                        height: `${height * 100}%`,
-                        position: 'absolute',
-                        left: `${leftPercent}%`,
-                        width: `${barWidthPercent}%`,
-                      }}
-                    />
-                  );
-                })}
+            {/* Music track */}
+            <div className="waveform-track music-track">
+              <div className="waveform-toggle-container">
+                <button
+                  className={`toggle-switch ${musicEnabled ? "enabled" : ""}`}
+                  onClick={() => setMusicEnabled(!musicEnabled)}
+                  aria-label="Toggle music track"
+                >
+                  <div className="toggle-slider" />
+                </button>
+                <span className="waveform-track-label">Music</span>
               </div>
-            </>
-          )}
-        </div>
+              <div
+                className="waveform-container"
+                onMouseDown={handleWaveformStart}
+                onTouchStart={handleWaveformStart}
+              >
+                {isLoading ? (
+                  <div className="waveform-loading">Loading audio...</div>
+                ) : (
+                  <>
+                    <div className="waveform-background">
+                      {musicWaveformData.map((height, index) => (
+                        <div
+                          key={index}
+                          className="waveform-bar background-bar"
+                          style={{ height: `${height * 100}%` }}
+                        />
+                      ))}
+                    </div>
+                    <div className="waveform-selected">
+                      {musicWaveformData.map((height, index) => {
+                        const position = index / musicWaveformData.length;
+                        const isInRange = position >= startTrim && position <= endTrim;
+                        if (!isInRange) return null;
+                        const totalBars = musicWaveformData.length;
+                        const barWidthPercent = 70 / totalBars;
+                        const leftPercent = (index / totalBars) * 100;
+                        return (
+                          <div
+                            key={`music-selected-${index}`}
+                            className="waveform-bar selected-bar"
+                            style={{
+                              height: `${height * 100}%`,
+                              position: 'absolute',
+                              left: `${leftPercent}%`,
+                              width: `${barWidthPercent}%`,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="waveform-container"
+            ref={waveformRef}
+            onMouseDown={handleWaveformStart}
+            onTouchStart={handleWaveformStart}
+          >
+            {/* Background waveform */}
+            {isLoading ? (
+              <div className="waveform-loading">Loading audio...</div>
+            ) : (
+              <>
+                <div className="waveform-background">
+                  {waveformData.map((height, index) => (
+                    <div
+                      key={index}
+                      className="waveform-bar background-bar"
+                      style={{ height: `${height * 100}%` }}
+                    />
+                  ))}
+                </div>
+
+                {/* Selected segment overlay */}
+                <div className="waveform-selected">
+                  {waveformData.map((height, index) => {
+                    const position = index / waveformData.length;
+                    const isInRange = position >= startTrim && position <= endTrim;
+                    
+                    if (!isInRange) return null;
+                    
+                    // Calculate exact position to align with background bars
+                    // Use the same percentage distribution as flex (flex: 1 distributes evenly)
+                    const totalBars = waveformData.length;
+                    const barWidthPercent = 70 / totalBars;
+                    const leftPercent = (index / totalBars) * 100;
+                    
+                    return (
+                      <div
+                        key={`selected-${index}`}
+                        className="waveform-bar selected-bar"
+                        style={{
+                          height: `${height * 100}%`,
+                          position: 'absolute',
+                          left: `${leftPercent}%`,
+                          width: `${barWidthPercent}%`,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Trimmer label */}
         <div className="trimmer-label">TRIMMER</div>

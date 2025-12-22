@@ -840,6 +840,202 @@ export async function processAudioFromFile({
   }
 }
 
+// processDualTrackAudio - Processes dual track audio (vocals + music) with trim, fade, and format conversion
+export async function processDualTrackAudio({
+  vocalsUrl,
+  musicUrl,
+  format,
+  trackName,
+  startTime,
+  duration,
+  vocalsEnabled = true,
+  musicEnabled = true,
+  fadeInEnabled = false,
+  fadeInDuration = 0,
+  fadeOutEnabled = false,
+  fadeOutDuration = 0,
+}: {
+  vocalsUrl: string;
+  musicUrl: string;
+  format: AudioExportFormat;
+  trackName: string;
+  startTime: number;
+  duration: number;
+  vocalsEnabled?: boolean;
+  musicEnabled?: boolean;
+  fadeInEnabled?: boolean;
+  fadeInDuration?: number;
+  fadeOutEnabled?: boolean;
+  fadeOutDuration?: number;
+}): Promise<AudioExportResult> {
+  let vocalsFilePath: string | null = null;
+  let musicFilePath: string | null = null;
+  let vocalsTrimmedPath: string | null = null;
+  let musicTrimmedPath: string | null = null;
+  let processedFilePath: string | null = null;
+
+  try {
+    const trackNameBase = sanitizeFileName(
+      trackName.replace(/\.[^/.]+$/, ""),
+      DEFAULT_TMP_PREFIX
+    );
+
+    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
+
+    // Download both tracks
+    const [vocalsResponse, musicResponse] = await Promise.all([
+      fetch(vocalsUrl),
+      fetch(musicUrl),
+    ]);
+
+    if (!vocalsResponse.ok || !musicResponse.ok) {
+      throw new Error("Failed to download audio tracks");
+    }
+
+    vocalsFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-vocals.mp3`);
+    musicFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-music.mp3`);
+
+    await Promise.all([
+      pipeline(Readable.fromWeb(vocalsResponse.body as any), fs.createWriteStream(vocalsFilePath)),
+      pipeline(Readable.fromWeb(musicResponse.body as any), fs.createWriteStream(musicFilePath)),
+    ]);
+
+    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+
+    if (vocalsEnabled && musicEnabled) {
+      // Trim both tracks first
+      vocalsTrimmedPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-vocals-trimmed.wav`);
+      musicTrimmedPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-music-trimmed.wav`);
+
+      if (!vocalsFilePath || !musicFilePath || !vocalsTrimmedPath || !musicTrimmedPath) {
+        throw new Error("Failed to create temporary file paths");
+      }
+
+      await Promise.all([
+        trimAudioWithFade({
+          inputPath: vocalsFilePath,
+          outputPath: vocalsTrimmedPath,
+          startTime,
+          duration,
+          fadeInDuration: 0,
+          fadeOutDuration: 0,
+          format: "wav",
+        }),
+        trimAudioWithFade({
+          inputPath: musicFilePath,
+          outputPath: musicTrimmedPath,
+          startTime,
+          duration,
+          fadeInDuration: 0,
+          fadeOutDuration: 0,
+          format: "wav",
+        }),
+      ]);
+
+      // Combine tracks using ffmpeg
+      if (!processedFilePath || !vocalsTrimmedPath || !musicTrimmedPath) {
+        throw new Error("Failed to create processed file path");
+      }
+      const finalVocalsPath = vocalsTrimmedPath;
+      const finalMusicPath = musicTrimmedPath;
+      const finalProcessedPath = processedFilePath;
+      await new Promise<void>((resolve, reject) => {
+        let command = ffmpeg()
+          .input(finalVocalsPath)
+          .input(finalMusicPath)
+          .complexFilter([
+            "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2[a]",
+          ])
+          .outputOptions(["-map", "[a]"]);
+
+        // Apply fade in/out
+        if (fadeInEnabled && fadeInDuration > 0) {
+          command = command.audioFilters(`afade=t=in:st=0:d=${fadeInDuration}`);
+        }
+        if (fadeOutEnabled && fadeOutDuration > 0) {
+          const fadeOutStart = duration - fadeOutDuration;
+          command = command.audioFilters(`afade=t=out:st=${fadeOutStart}:d=${fadeOutDuration}`);
+        }
+
+        // Apply format conversion
+        const formatConfig = AUDIO_FORMAT_CONFIG[format];
+        command = formatConfig.apply(command);
+
+        command
+          .output(finalProcessedPath)
+          .on("end", () => resolve())
+          .on("error", (err) => reject(err))
+          .run();
+      });
+    } else if (vocalsEnabled) {
+      // Only vocals
+      if (!vocalsFilePath || !processedFilePath) {
+        throw new Error("Failed to create temporary file paths");
+      }
+      await trimAudioWithFade({
+        inputPath: vocalsFilePath,
+        outputPath: processedFilePath,
+        startTime,
+        duration,
+        fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
+        fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
+        format,
+      });
+    } else if (musicEnabled) {
+      // Only music
+      if (!musicFilePath || !processedFilePath) {
+        throw new Error("Failed to create temporary file paths");
+      }
+      await trimAudioWithFade({
+        inputPath: musicFilePath,
+        outputPath: processedFilePath,
+        startTime,
+        duration,
+        fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
+        fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
+        format,
+      });
+    } else {
+      throw new Error("At least one track must be enabled");
+    }
+
+    // Upload to S3
+    const uploadsConfig: S3UploadConfig = {
+      ...s3UploadConfig,
+      keyPrefix: s3UploadsFolder,
+    };
+
+    const { downloadUrl, fileName } = await uploadAudioToS3({
+      filePath: processedFilePath,
+      mimeType,
+      downloadName: trackNameBase,
+      extension,
+      config: uploadsConfig,
+    });
+
+    return {
+      downloadUrl,
+      fileName,
+      format,
+      trackName: trackNameBase,
+      extension,
+    };
+  } finally {
+    // Clean up temp files
+    await Promise.all(
+      [vocalsFilePath, musicFilePath, vocalsTrimmedPath, musicTrimmedPath, processedFilePath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
+  }
+}
+
 // separateVoiceFromMusic - Separates vocals from music using LALAL.AI API
 export async function separateVoiceFromMusic({
   audioUrl,

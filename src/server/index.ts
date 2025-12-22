@@ -34,7 +34,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./create-server.js";
-import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat, detectBPMAndKey } from "./services/audio.js";
+import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat, detectBPMAndKey, separateVoiceFromMusic, processDualTrackAudio } from "./services/audio.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const PORT = process.env.PORT || 8000;
@@ -192,6 +192,10 @@ app.post("/api/audio-export", upload.single("audio"), handleAudioExport);
 async function handleAudioProcess(req: Request, res: Response): Promise<void> {
   // Handle both multipart/form-data (with file) and application/x-www-form-urlencoded (with URL)
   const audioUrl = req.body.audioUrl;
+  const vocalsUrl = req.body.vocalsUrl;
+  const musicUrl = req.body.musicUrl;
+  const vocalsEnabled = req.body.vocalsEnabled;
+  const musicEnabled = req.body.musicEnabled;
   const format = req.body.format;
   const trackName = req.body.trackName;
   const startTime = req.body.startTime;
@@ -208,13 +212,69 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  if (!audioUrl && !file) {
-    res.status(400).json({ error: "Either audioUrl or audio file must be provided" });
+  if (startTime === undefined || duration === undefined) {
+    res.status(400).json({ error: "Missing startTime or duration parameters" });
     return;
   }
 
-  if (startTime === undefined || duration === undefined) {
-    res.status(400).json({ error: "Missing startTime or duration parameters" });
+  // Check if this is a dual track request
+  const isDualTrack = vocalsUrl && musicUrl;
+
+  if (isDualTrack) {
+    // Dual track processing
+    try {
+      console.log("[Audio Process] Processing dual tracks:", {
+        vocalsUrl,
+        musicUrl,
+        format,
+        startTime,
+        duration,
+        vocalsEnabled,
+        musicEnabled,
+        fadeInEnabled,
+        fadeInDuration,
+        fadeOutEnabled,
+        fadeOutDuration,
+      });
+
+      const result = await processDualTrackAudio({
+        vocalsUrl: vocalsUrl as string,
+        musicUrl: musicUrl as string,
+        format: normalizeAudioExportFormat(format as string),
+        trackName: (trackName as string) || "audio",
+        startTime: parseFloat(startTime as string),
+        duration: parseFloat(duration as string),
+        vocalsEnabled: vocalsEnabled === "true" || vocalsEnabled === true,
+        musicEnabled: musicEnabled === "true" || musicEnabled === true,
+        fadeInEnabled: fadeInEnabled === "true" || fadeInEnabled === true,
+        fadeInDuration: fadeInDuration ? parseFloat(fadeInDuration as string) : 0,
+        fadeOutEnabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+        fadeOutDuration: fadeOutDuration ? parseFloat(fadeOutDuration as string) : 0,
+      });
+
+      console.log("[Audio Process] Processed dual tracks:", {
+        format: result.format,
+        fileName: result.fileName,
+        downloadUrl: result.downloadUrl,
+      });
+
+      res.json({
+        downloadUrl: result.downloadUrl,
+        fileName: result.fileName,
+        format: result.format,
+        extension: result.extension,
+      });
+    } catch (error) {
+      console.error("Failed to process dual track audio", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to process dual track audio";
+      res.status(500).json({ error: errorMessage });
+    }
+    return;
+  }
+
+  // Single track processing (original behavior)
+  if (!audioUrl && !file) {
+    res.status(400).json({ error: "Either audioUrl or audio file must be provided" });
     return;
   }
 
@@ -365,6 +425,92 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
 }
 
 app.post("/api/detect-bpm-key", express.json(), handleDetectBPMKey);
+
+// handleExtractVocals - Handles vocal extraction request
+async function handleExtractVocals(req: Request, res: Response): Promise<void> {
+  const audioUrl = req.body.audioUrl;
+  const trackName = req.body.trackName;
+  const file = req.file;
+
+  if (!audioUrl && !file) {
+    res.status(400).json({ error: "Either audioUrl or audio file must be provided" });
+    return;
+  }
+
+  try {
+    let resultAudioUrl = audioUrl;
+
+    // If file is uploaded, upload to S3 first to get public URL
+    if (file) {
+      console.log("[Extract Vocals] Uploading file to S3 first:", {
+        fileName: file.originalname,
+        size: file.size,
+      });
+
+      const result = await generatePresignedUploadUrl(
+        file.originalname,
+        file.mimetype || "audio/mpeg"
+      );
+
+      const s3UploadResponse = await fetch(result.uploadUrl, {
+        method: "PUT",
+        body: await fs.promises.readFile(file.path),
+        headers: {
+          "Content-Type": file.mimetype || "audio/mpeg",
+        },
+      });
+
+      if (!s3UploadResponse.ok) {
+        throw new Error("Failed to upload file to S3");
+      }
+
+      resultAudioUrl = result.publicUrl;
+      console.log("[Extract Vocals] File uploaded to S3:", result.publicUrl);
+
+      // Clean up uploaded file
+      try {
+        await fs.promises.unlink(file.path);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+
+    if (!resultAudioUrl) {
+      res.status(400).json({ error: "No audio URL available" });
+      return;
+    }
+
+    console.log("[Extract Vocals] Extracting vocals:", {
+      audioUrl: resultAudioUrl,
+      trackName,
+    });
+
+    const result = await separateVoiceFromMusic({
+      audioUrl: resultAudioUrl,
+      suggestedTrackName: trackName || null,
+    });
+
+    console.log("[Extract Vocals] Extraction complete:", {
+      trackName: result.trackName,
+      vocalsFileName: result.vocalsFileName,
+      musicFileName: result.musicFileName,
+    });
+
+    res.json({
+      vocalsUrl: result.vocalsUrl,
+      vocalsFileName: result.vocalsFileName,
+      musicUrl: result.musicUrl,
+      musicFileName: result.musicFileName,
+      trackName: result.trackName,
+    });
+  } catch (error) {
+    console.error("[Extract Vocals] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to extract vocals";
+    res.status(500).json({ error: errorMessage });
+  }
+}
+
+app.post("/api/extract-vocals", upload.single("audio"), handleExtractVocals);
 
 // Error handling middleware to ensure CORS headers are always sent (must be after all routes)
 app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
