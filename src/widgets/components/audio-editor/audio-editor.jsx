@@ -2352,6 +2352,7 @@ export function AudioEditor() {
           disabled={isLoading || (isVocalsMode && !vocalsEnabled && !musicEnabled)}
           className={`play-button ${isPlaying ? "playing" : ""} ${isLoading ? "loading" : ""}`}
           aria-label={isPlaying ? "Pause" : "Play"}
+          title={isVocalsMode && !vocalsEnabled && !musicEnabled ? "Enable at least one track to play" : undefined}
         >
           {isLoading ? (
             <span className="loading-spinner">...</span>
@@ -2899,7 +2900,8 @@ export function AudioEditor() {
         <button
           className="generate-button"
           onClick={handleExportAudio}
-          disabled={!rightsConfirmed || isLoading || isGenerating || (isVocalsMode && !vocalsEnabled && !musicEnabled)}
+          disabled={(isVocalsMode && !vocalsEnabled && !musicEnabled) || !rightsConfirmed || isLoading || isGenerating}
+          title={isVocalsMode && !vocalsEnabled && !musicEnabled ? "Enable at least one track to export" : undefined}
           >
           {isGenerating ? (
             <>
