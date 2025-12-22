@@ -3,7 +3,7 @@
  */
 declare module "essentia.js" {
   export interface EssentiaWASMModule {
-    (): Promise<any>;
+    [key: string]: any;
   }
 
   export interface EssentiaInstance {
@@ -45,7 +45,7 @@ declare module "essentia.js" {
   }
 
   export interface EssentiaConstructor {
-    new (essentiaWASM: any, isDebug?: boolean): EssentiaInstance;
+    new (essentiaWASM: EssentiaWASMModule, isDebug?: boolean): EssentiaInstance;
   }
 
   export const EssentiaWASM: EssentiaWASMModule;

@@ -40,7 +40,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import { EssentiaWASM, Essentia } from "essentia.js";
+import * as EssentiaModule from "essentia.js";
 
 /* ----------------------------- FFMPEG CONFIGURATION ----------------------------- */
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -1132,11 +1132,11 @@ function parseWavFile(wavPath: string): Promise<{ samples: Float32Array; sampleR
 }
 
 // initializeEssentia - Lazy initialization of Essentia.js
-let essentiaInstance: InstanceType<typeof Essentia> | null = null;
-async function initializeEssentia(): Promise<InstanceType<typeof Essentia>> {
+let essentiaInstance: InstanceType<typeof EssentiaModule.Essentia> | null = null;
+async function initializeEssentia(): Promise<InstanceType<typeof EssentiaModule.Essentia>> {
   if (!essentiaInstance) {
-    const essentiaWASM = await EssentiaWASM();
-    essentiaInstance = new Essentia(essentiaWASM);
+    // EssentiaWASM is already the module object in UMD build, pass it directly to Essentia constructor
+    essentiaInstance = new EssentiaModule.Essentia(EssentiaModule.EssentiaWASM);
   }
   return essentiaInstance;
 }
