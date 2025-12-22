@@ -223,6 +223,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
 
   if (isDualTrack) {
     // Dual track processing
+    const processingStartTime = Date.now();
     try {
       console.log("[Audio Process] Processing dual tracks:", {
         vocalsUrl,
@@ -238,7 +239,6 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
         fadeOutDuration,
       });
 
-      const startTime = Date.now();
       const result = await processDualTrackAudio({
         vocalsUrl: vocalsUrl as string,
         musicUrl: musicUrl as string,
@@ -267,7 +267,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
         music_enabled: musicEnabled === "true" || musicEnabled === true,
         fade_in_enabled: fadeInEnabled === "true" || fadeInEnabled === true,
         fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
-        processing_time_ms: Date.now() - startTime,
+        processing_time_ms: Date.now() - processingStartTime,
         source: "api",
       });
 
