@@ -1088,17 +1088,15 @@ async function addMetadataToAudio(
   title: string
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    // Escape title to prevent issues with special characters
-    // Replace quotes and other problematic characters
-    const escapedTitle = title.replace(/"/g, '\\"').replace(/'/g, "\\'");
+    // Escape quotes in title and wrap in quotes for ffmpeg metadata
+    // Replace double quotes with single quotes to avoid conflicts
+    const safeTitle = title.replace(/"/g, "'");
     
     // Use codec copy to preserve quality (no re-encoding)
-    // This works for most audio formats (MP3, M4A, etc.)
+    // Quote the metadata value to handle spaces and special characters (parentheses, etc.)
     ffmpeg(inputPath)
-      .outputOptions([
-        "-metadata", `title=${escapedTitle}`,
-        "-codec", "copy", // Copy codec to avoid re-encoding (preserves quality)
-      ])
+      .addOption("-metadata", `title="${safeTitle}"`)
+      .addOption("-codec", "copy") // Copy codec to avoid re-encoding (preserves quality)
       .on("error", (error: unknown) => reject(error))
       .on("end", () => resolve())
       .save(outputPath);
