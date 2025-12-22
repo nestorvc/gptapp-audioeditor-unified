@@ -40,6 +40,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import aubioModule from "aubiojs";
+const aubio = aubioModule.default || aubioModule;
 
 /* ----------------------------- FFMPEG CONFIGURATION ----------------------------- */
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -1398,6 +1400,146 @@ function detectKeyFromSamples(samples: Float32Array, sampleRate: number): { key:
   };
 }
 
+// detectBPMWithAubio - Uses Aubio.js library for BPM detection
+async function detectBPMWithAubio(samples: Float32Array, sampleRate: number): Promise<number | null> {
+  try {
+    const { Tempo } = await aubio();
+    
+    // Typical buffer sizes for tempo detection
+    const bufferSize = 1024;
+    const hopSize = 512;
+    
+    const tempo = new Tempo(bufferSize, hopSize, sampleRate);
+    
+    // Process samples in chunks
+    let processedSamples = 0;
+    while (processedSamples < samples.length) {
+      const chunkSize = Math.min(bufferSize, samples.length - processedSamples);
+      const chunk = samples.slice(processedSamples, processedSamples + chunkSize);
+      
+      // Pad chunk if needed
+      const paddedChunk = new Float32Array(bufferSize);
+      paddedChunk.set(chunk, 0);
+      
+      tempo.do(paddedChunk);
+      processedSamples += hopSize;
+    }
+    
+    const bpm = tempo.getBpm();
+    const confidence = tempo.getConfidence();
+    
+    // Only return BPM if confidence is reasonable
+    if (bpm > 0 && bpm < 300 && confidence > 0.1) {
+      return Math.round(bpm);
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn("[BPM Detection] Aubio.js failed, falling back to custom algorithm:", error);
+    return null;
+  }
+}
+
+// detectKeyWithAubio - Uses Aubio.js for pitch detection, then determines key
+async function detectKeyWithAubio(samples: Float32Array, sampleRate: number): Promise<{ key: string; scale?: string } | null> {
+  try {
+    const { Pitch } = await aubio();
+    
+    // Use yinfft method (default, good for music)
+    const bufferSize = 2048;
+    const hopSize = 512;
+    
+    const pitch = new Pitch("yinfft", bufferSize, hopSize, sampleRate);
+    
+    // Collect pitch samples for chromagram
+    const pitchSamples: number[] = [];
+    let processedSamples = 0;
+    
+    while (processedSamples < samples.length) {
+      const chunkSize = Math.min(bufferSize, samples.length - processedSamples);
+      const chunk = samples.slice(processedSamples, processedSamples + chunkSize);
+      
+      const paddedChunk = new Float32Array(bufferSize);
+      paddedChunk.set(chunk, 0);
+      
+      const frequency = pitch.do(paddedChunk);
+      
+      // Only include valid frequencies (typical range for music: 80-2000 Hz)
+      if (frequency > 80 && frequency < 2000) {
+        pitchSamples.push(frequency);
+      }
+      
+      processedSamples += hopSize;
+    }
+    
+    if (pitchSamples.length === 0) {
+      return null;
+    }
+    
+    // Build chromagram from detected pitches
+    const chromagram = new Float32Array(12);
+    const A4 = 440;
+    const C0 = A4 * Math.pow(2, -4.75);
+    
+    for (const frequency of pitchSamples) {
+      const h = 12 * Math.log2(frequency / C0);
+      const pitchClass = Math.round(h) % 12;
+      const pitchClassIndex = ((pitchClass % 12) + 12) % 12;
+      chromagram[pitchClassIndex] += 1;
+    }
+    
+    // Normalize chromagram
+    const sum = chromagram.reduce((a, b) => a + b, 0);
+    if (sum > 0) {
+      for (let i = 0; i < 12; i++) {
+        chromagram[i] /= sum;
+      }
+    }
+    
+    // Use Krumhansl-Schmuckler algorithm to find key
+    const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let bestKey = 0;
+    let bestScale: "major" | "minor" = "major";
+    let bestScore = -Infinity;
+    
+    for (let key = 0; key < 12; key++) {
+      // Test major
+      let majorScore = 0;
+      for (let i = 0; i < 12; i++) {
+        const chromaIndex = (i - key + 12) % 12;
+        majorScore += chromagram[chromaIndex] * MAJOR_PROFILE[i];
+      }
+      
+      // Test minor
+      let minorScore = 0;
+      for (let i = 0; i < 12; i++) {
+        const chromaIndex = (i - key + 12) % 12;
+        minorScore += chromagram[chromaIndex] * MINOR_PROFILE[i];
+      }
+      
+      if (majorScore > bestScore) {
+        bestScore = majorScore;
+        bestKey = key;
+        bestScale = "major";
+      }
+      
+      if (minorScore > bestScore) {
+        bestScore = minorScore;
+        bestKey = key;
+        bestScale = "minor";
+      }
+    }
+    
+    return {
+      key: noteNames[bestKey],
+      scale: bestScale,
+    };
+  } catch (error) {
+    console.warn("[Key Detection] Aubio.js failed, falling back to custom algorithm:", error);
+    return null;
+  }
+}
+
 // detectBPMAndKey - Detects BPM and musical key from audio file
 export async function detectBPMAndKey({
   audioUrl,
@@ -1421,11 +1563,25 @@ export async function detectBPMAndKey({
     // Parse WAV file
     const { samples, sampleRate } = await parseWavFile(wavFilePath);
 
-    // Detect BPM
-    const bpm = detectBPMFromSamples(samples, sampleRate);
+    // Try Aubio.js first (more accurate)
+    let bpm = await detectBPMWithAubio(samples, sampleRate);
+    let keyResult = await detectKeyWithAubio(samples, sampleRate);
+    let bpmMethod = "aubio";
+    let keyMethod = "aubio";
 
-    // Detect key
-    const keyResult = detectKeyFromSamples(samples, sampleRate);
+    // Fallback to custom algorithm if Aubio.js fails
+    if (bpm === null) {
+      console.log("[BPM/Key Detection] Using fallback algorithm for BPM");
+      bpm = detectBPMFromSamples(samples, sampleRate);
+      bpmMethod = "fallback";
+    }
+
+    if (keyResult === null) {
+      console.log("[BPM/Key Detection] Using fallback algorithm for key");
+      keyResult = detectKeyFromSamples(samples, sampleRate);
+      keyMethod = "fallback";
+    }
+
     // Combine key and scale into a single string like "C Major" or "A Minor"
     const scaleCapitalized = keyResult?.scale 
       ? keyResult.scale.charAt(0).toUpperCase() + keyResult.scale.slice(1)
@@ -1436,6 +1592,8 @@ export async function detectBPMAndKey({
       bpm,
       key,
       keyResult: keyResult ? { key: keyResult.key, scale: keyResult.scale } : null,
+      bpmMethod,
+      keyMethod,
     });
 
     return {

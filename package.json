@@ -22,6 +22,7 @@
     "@aws-sdk/s3-request-presigner": "^3.956.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@modelcontextprotocol/sdk": "^1.22.0",
+    "aubiojs": "^0.2.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
