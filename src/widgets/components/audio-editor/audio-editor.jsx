@@ -485,20 +485,23 @@ export function AudioEditor() {
   };
 
   // Format marquee text with audio metadata only (never include track name/file name)
+  // Order: BPM • Key • Sample Rate
   const formatMarqueeText = () => {
     const parts = [];
     
-    // Only include Sample rate, BPM, and Key
-    if (audioSampleRate > 0) {
-      parts.push(`Sample rate: ${formatSampleRate(audioSampleRate)}`);
-    }
-    
+    // BPM first
     if (bpm !== null && bpm > 0) {
       parts.push(`BPM: ${bpm}`);
     }
     
+    // Key second
     if (key) {
       parts.push(`Key: ${key}`);
+    }
+    
+    // Sample rate last
+    if (audioSampleRate > 0) {
+      parts.push(`Sample Rate: ${formatSampleRate(audioSampleRate)}`);
     }
     
     return parts.join(" • ");

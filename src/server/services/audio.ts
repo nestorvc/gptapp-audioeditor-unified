@@ -862,6 +862,8 @@ export async function separateVoiceFromMusic({
   let downloadedFilePath: string | null = null;
   let vocalsFilePath: string | null = null;
   let musicFilePath: string | null = null;
+  let vocalsWithMetadata: string | null = null;
+  let musicWithMetadata: string | null = null;
 
   try {
     // Download audio file
@@ -1021,20 +1023,34 @@ export async function separateVoiceFromMusic({
 
     const mimeType = getMimeType(originalExtension);
 
-    // Upload both tracks to S3
-    const vocalsBaseName = `${trackNameBase}_vocals`;
-    const musicBaseName = `${trackNameBase}_music`;
+    // Add suffix to track names for LALAL.AI generated files
+    const suffix = " (Generated_by_AudioConsole.app)";
+    const vocalsBaseName = `${trackNameBase}_vocals${suffix}`;
+    const musicBaseName = `${trackNameBase}_music${suffix}`;
+
+    // Add metadata to audio files before uploading
+    vocalsWithMetadata = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-vocals-metadata${originalExtension}`);
+    musicWithMetadata = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-music-metadata${originalExtension}`);
+
+    await Promise.all([
+      addMetadataToAudio(vocalsFilePath, vocalsWithMetadata, vocalsBaseName),
+      addMetadataToAudio(musicFilePath, musicWithMetadata, musicBaseName),
+    ]);
+
+    // Update file paths to use metadata-enhanced versions
+    const finalVocalsPath = vocalsWithMetadata;
+    const finalMusicPath = musicWithMetadata;
 
     const [vocalsUpload, musicUpload] = await Promise.all([
       uploadAudioToS3({
-        filePath: vocalsFilePath,
+        filePath: finalVocalsPath,
         mimeType,
         downloadName: vocalsBaseName,
         extension: originalExtension,
         config: s3UploadConfig,
       }),
       uploadAudioToS3({
-        filePath: musicFilePath,
+        filePath: finalMusicPath,
         mimeType,
         downloadName: musicBaseName,
         extension: originalExtension,
@@ -1050,9 +1066,9 @@ export async function separateVoiceFromMusic({
       trackName: trackNameBase,
     };
   } finally {
-    // Clean up temp files
+    // Clean up temp files (including metadata-enhanced versions)
     await Promise.all(
-      [downloadedFilePath, vocalsFilePath, musicFilePath].map(async (filePath) => {
+      [downloadedFilePath, vocalsFilePath, musicFilePath, vocalsWithMetadata, musicWithMetadata].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);
@@ -1063,6 +1079,30 @@ export async function separateVoiceFromMusic({
       })
     );
   }
+}
+
+// addMetadataToAudio - Adds title metadata to audio file using ffmpeg
+async function addMetadataToAudio(
+  inputPath: string,
+  outputPath: string,
+  title: string
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    // Escape title to prevent issues with special characters
+    // Replace quotes and other problematic characters
+    const escapedTitle = title.replace(/"/g, '\\"').replace(/'/g, "\\'");
+    
+    // Use codec copy to preserve quality (no re-encoding)
+    // This works for most audio formats (MP3, M4A, etc.)
+    ffmpeg(inputPath)
+      .outputOptions([
+        "-metadata", `title=${escapedTitle}`,
+        "-codec", "copy", // Copy codec to avoid re-encoding (preserves quality)
+      ])
+      .on("error", (error: unknown) => reject(error))
+      .on("end", () => resolve())
+      .save(outputPath);
+  });
 }
 
 // decodeAudioToWav - Converts audio file to WAV format for analysis
