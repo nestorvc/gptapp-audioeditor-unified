@@ -1,87 +1,20 @@
 /**
- * ANALYTICS.JS - Google Analytics 4 (GA4) Event Tracking
+ * ANALYTICS.JS - Server-Side Google Analytics 4 (GA4) Event Tracking
  * 
  * Provides utilities for tracking user interactions and events in the audio editor widget.
- * Handles GA4 initialization, session tracking, and event logging.
+ * Events are sent to the server which forwards them to GA4 via Measurement Protocol.
  * 
  * Privacy: No PII (Personally Identifiable Information) is tracked.
  * Only metadata and user actions are logged.
  */
 
-// GA4 Measurement ID (injected by server via window.__GOOGLE_ANALYTICS_ID__)
-let measurementId = null;
-let isInitialized = false;
-let gtagLoaded = false;
+// API base URL (injected by server via window.__API_BASE_URL__)
+const API_BASE_URL = typeof window !== 'undefined' && window.__API_BASE_URL__ 
+  ? window.__API_BASE_URL__.replace(/\/$/, '') // Remove trailing slash
+  : '';
 
 // Session ID storage key
 const SESSION_STORAGE_KEY = 'ga4_chatgpt_session_id';
-
-/**
- * Initialize GA4 with the provided measurement ID
- * @param {string} id - GA4 Measurement ID (G-XXXXXXXXXX)
- */
-export function initGA4(id) {
-  if (!id || typeof id !== 'string') {
-    console.warn('[Analytics] No GA4 measurement ID provided. Analytics disabled.');
-    return;
-  }
-
-  measurementId = id;
-
-  // Load gtag.js script dynamically
-  if (!gtagLoaded) {
-    // Initialize dataLayer immediately (before script loads)
-    window.dataLayer = window.dataLayer || [];
-    function gtag() {
-      window.dataLayer.push(arguments);
-    }
-    window.gtag = gtag;
-
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${id}`;
-    
-    // Wait for script to actually load before marking as initialized
-    script.onload = () => {
-      // The real gtag.js will override our local function
-      gtag('js', new Date());
-      gtag('config', id, {
-        send_page_view: true,
-      });
-
-      gtagLoaded = true;
-      isInitialized = true;
-      console.log('[Analytics] GA4 initialized with ID:', id);
-      console.log('[Analytics] Script loaded successfully. dataLayer length:', window.dataLayer.length);
-      
-      // Verify the real gtag function is now available
-      if (typeof window.gtag === 'function' && window.gtag.toString().includes('dataLayer')) {
-        console.log('[Analytics] Real gtag.js function detected');
-      } else {
-        console.warn('[Analytics] Warning: gtag function may not be the real one');
-      }
-    };
-    
-    script.onerror = () => {
-      console.error('[Analytics] Failed to load GA4 script. Check CSP and network restrictions.');
-      console.error('[Analytics] Script URL:', script.src);
-      console.error('[Analytics] This may be blocked by OpenAI\'s iframe security policies.');
-      console.error('[Analytics] Events will be queued in dataLayer but may not be sent.');
-    };
-    
-    document.head.appendChild(script);
-    console.log('[Analytics] Loading GA4 script from:', script.src);
-    
-    // Set a timeout to detect if script never loads
-    setTimeout(() => {
-      if (!isInitialized) {
-        console.error('[Analytics] Script load timeout - gtag.js may be blocked');
-        console.error('[Analytics] Check Network tab for blocked requests to googletagmanager.com');
-        console.error('[Analytics] Current dataLayer length:', window.dataLayer.length);
-      }
-    }, 5000);
-  }
-}
 
 /**
  * Get or create a session ID for the current ChatGPT conversation
@@ -108,20 +41,18 @@ export function getSessionId() {
 }
 
 /**
- * Track a custom event to GA4
+ * Track a custom event to GA4 via server
  * @param {string} eventName - Event name (snake_case recommended)
  * @param {Object} parameters - Event parameters
  */
 export function trackEvent(eventName, parameters = {}) {
-  if (!isInitialized || !window.gtag) {
-    console.warn('[Analytics] GA4 not initialized. Event not tracked:', eventName);
-    console.warn('[Analytics] isInitialized:', isInitialized, 'window.gtag exists:', !!window.gtag);
-    console.warn('[Analytics] dataLayer length:', window.dataLayer?.length || 0);
+  if (!eventName || typeof eventName !== 'string') {
+    console.warn('[Analytics] Invalid event name:', eventName);
     return;
   }
 
-  if (!eventName || typeof eventName !== 'string') {
-    console.warn('[Analytics] Invalid event name:', eventName);
+  if (!API_BASE_URL) {
+    console.warn('[Analytics] API_BASE_URL not set. Event not tracked:', eventName);
     return;
   }
 
@@ -132,22 +63,22 @@ export function trackEvent(eventName, parameters = {}) {
     timestamp: new Date().toISOString(),
   };
 
-  try {
-    window.gtag('event', eventName, eventParams);
-    console.log('[Analytics] Event tracked:', eventName, eventParams);
-    console.log('[Analytics] dataLayer after event:', window.dataLayer.length);
-    
-    // Check if requests are actually being made
-    setTimeout(() => {
-      // Try to detect if gtag is making network requests
-      const img = new Image();
-      img.src = `https://www.google-analytics.com/g/collect?v=2&tid=${measurementId}&t=event&en=test&ep.test=1`;
-      img.onload = () => console.log('[Analytics] Test request succeeded - network access OK');
-      img.onerror = () => console.error('[Analytics] Test request failed - may be blocked by CSP or OpenAI');
-    }, 1000);
-  } catch (error) {
-    console.warn('[Analytics] Error tracking event:', error);
-  }
+  // Send event to server
+  fetch(`${API_BASE_URL}/api/analytics/track`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      eventName,
+      parameters: eventParams,
+      sessionId: getSessionId(),
+    }),
+  }).catch((error) => {
+    console.warn('[Analytics] Error sending event to server:', error);
+  });
+
+  console.log('[Analytics] Event tracked:', eventName, eventParams);
 }
 
 /**
@@ -311,27 +242,45 @@ export function trackError({ error_type, error_message, context }) {
 }
 
 /**
- * Initialize analytics on module load if GA4 ID is available
- * This is called automatically when the module is imported
+ * Track vocal extraction started event
+ * @param {Object} options - Extraction options
+ * @param {string} options.source - Source (manual/chatgpt_url)
  */
-export function initializeAnalytics() {
-  // Check for GA4 ID from window global (injected by server)
-  const gaId = typeof window !== 'undefined' && window.__GOOGLE_ANALYTICS_ID__;
-  
-  if (gaId) {
-    initGA4(gaId);
-  } else {
-    console.log('[Analytics] GA4 ID not found. Analytics disabled.');
-  }
+export function trackVocalExtractionStarted({ source }) {
+  trackEvent('vocal_extraction_started', {
+    source: source || 'unknown',
+  });
 }
 
-// Auto-initialize when module loads
-if (typeof window !== 'undefined') {
-  // Wait for DOM to be ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeAnalytics);
-  } else {
-    initializeAnalytics();
-  }
+/**
+ * Track BPM detection started event
+ * @param {Object} options - Detection options
+ * @param {string} options.source - Source (manual/chatgpt_url)
+ */
+export function trackBPMDetectionStarted({ source }) {
+  trackEvent('bpm_detection_started', {
+    source: source || 'unknown',
+  });
 }
 
+/**
+ * Track dual track exported event
+ * @param {Object} exportParams - Export parameters
+ * @param {string} exportParams.format - Export format
+ * @param {number} exportParams.duration - Exported duration in seconds
+ * @param {boolean} exportParams.vocals_enabled - Vocals track enabled
+ * @param {boolean} exportParams.music_enabled - Music track enabled
+ */
+export function trackDualTrackExported({
+  format,
+  duration,
+  vocals_enabled,
+  music_enabled,
+}) {
+  trackEvent('dual_track_exported', {
+    format: format || 'unknown',
+    duration: duration || 0,
+    vocals_enabled: vocals_enabled !== undefined ? vocals_enabled : true,
+    music_enabled: music_enabled !== undefined ? music_enabled : true,
+  });
+}

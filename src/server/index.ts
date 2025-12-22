@@ -35,6 +35,7 @@ import fs from "node:fs";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./create-server.js";
 import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat, detectBPMAndKey, separateVoiceFromMusic, processDualTrackAudio } from "./services/audio.js";
+import { trackWidgetEvent, trackEvent } from "./services/analytics.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const PORT = process.env.PORT || 8000;
@@ -237,6 +238,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
         fadeOutDuration,
       });
 
+      const startTime = Date.now();
       const result = await processDualTrackAudio({
         vocalsUrl: vocalsUrl as string,
         musicUrl: musicUrl as string,
@@ -256,6 +258,17 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
         format: result.format,
         fileName: result.fileName,
         downloadUrl: result.downloadUrl,
+      });
+
+      await trackEvent("dual_track_exported", {
+        format: result.format,
+        duration: parseFloat(duration as string),
+        vocals_enabled: vocalsEnabled === "true" || vocalsEnabled === true,
+        music_enabled: musicEnabled === "true" || musicEnabled === true,
+        fade_in_enabled: fadeInEnabled === "true" || fadeInEnabled === true,
+        fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
+        processing_time_ms: Date.now() - startTime,
+        source: "api",
       });
 
       res.json({
@@ -402,6 +415,7 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const startTime = Date.now();
   try {
     const result = await detectBPMAndKey({
       audioUrl: audioUrl as string,
@@ -413,6 +427,13 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
       audioUrl,
     });
 
+    await trackEvent("bpm_detection_completed", {
+      bpm: result.bpm ?? null,
+      key: result.key ?? null,
+      processing_time_ms: Date.now() - startTime,
+      source: "api",
+    });
+
     res.json({
       bpm: result.bpm,
       key: result.key,
@@ -420,6 +441,14 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
   } catch (error) {
     console.error("[BPM/Key Detection] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to detect BPM and key";
+    
+    await trackEvent("bpm_detection_error", {
+      error_type: "detection_failed",
+      error_message: errorMessage,
+      processing_time_ms: Date.now() - startTime,
+      source: "api",
+    });
+    
     res.status(500).json({ error: errorMessage });
   }
 }
@@ -485,6 +514,7 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
       trackName,
     });
 
+    const startTime = Date.now();
     const result = await separateVoiceFromMusic({
       audioUrl: resultAudioUrl,
       suggestedTrackName: trackName || null,
@@ -494,6 +524,13 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
       trackName: result.trackName,
       vocalsFileName: result.vocalsFileName,
       musicFileName: result.musicFileName,
+    });
+
+    await trackEvent("vocal_extraction_completed", {
+      vocals_file_name: result.vocalsFileName,
+      music_file_name: result.musicFileName,
+      processing_time_ms: Date.now() - startTime,
+      source: "api",
     });
 
     res.json({
@@ -506,11 +543,39 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
   } catch (error) {
     console.error("[Extract Vocals] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to extract vocals";
+    
+    await trackEvent("vocal_extraction_error", {
+      error_type: "extraction_failed",
+      error_message: errorMessage,
+      source: "api",
+    });
+    
     res.status(500).json({ error: errorMessage });
   }
 }
 
 app.post("/api/extract-vocals", upload.single("audio"), handleExtractVocals);
+
+// handleAnalyticsTrack - Handles analytics event tracking from widget frontend
+async function handleAnalyticsTrack(req: Request, res: Response): Promise<void> {
+  const { eventName, parameters, sessionId } = req.body;
+
+  if (!eventName || typeof eventName !== "string") {
+    res.status(400).json({ error: "Missing or invalid eventName parameter" });
+    return;
+  }
+
+  try {
+    await trackWidgetEvent(eventName, parameters || {}, sessionId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("[Analytics] Error tracking event:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to track event";
+    res.status(500).json({ error: errorMessage });
+  }
+}
+
+app.post("/api/analytics/track", express.json(), handleAnalyticsTrack);
 
 // Error handling middleware to ensure CORS headers are always sent (must be after all routes)
 app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {

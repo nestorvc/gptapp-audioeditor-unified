@@ -61,6 +61,7 @@ import {
   AUDIO_EXPORT_FORMATS,
   type AudioExportFormat,
 } from "./services/audio.js";
+import { trackMCPTool } from "./services/analytics.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const ASSETS_DIR = path.resolve(projectRoot, "dist", "widgets");
@@ -313,6 +314,12 @@ export const createServer = () => {
       // Priority: provided audioUrl > audioFile download_url
       const audioUrl = providedAudioUrl ?? audioFile?.download_url ?? null;
 
+      await trackMCPTool("audio.open_ringtone_editor", {
+        has_audio_file: !!audioFile,
+        has_audio_url: !!audioUrl,
+        mode: "ringtone",
+      });
+
       return {
         content: [
           {
@@ -401,6 +408,12 @@ export const createServer = () => {
           format: format ?? null,
         };
 
+        await trackMCPTool(toolName, {
+          has_download_url: !!downloadUrl,
+          has_file_name: !!fileName,
+          format: format ?? null,
+        });
+
         console.log(`[MCP NOTIFIER] Notified ChatGPT about audio download URL.`);
         return {
           content: [
@@ -472,22 +485,59 @@ export const createServer = () => {
           })
           .describe("Request parameters for generating a hosted audio download in the selected format.")
           .parse(rawParams);
-        const result = await convertRemoteAudioToFormat({
-          audioUrl,
-          format,
-          suggestedTrackName: trackName ?? null,
-        });
+        
+        const startTime = Date.now();
+        let result;
+        let error: string | undefined;
 
-        console.log("[Audio Export] Converted via MCP tool", {
-          format: result.format,
-          fileName: result.fileName,
-          audioUrl,
-        });
+        try {
+          result = await convertRemoteAudioToFormat({
+            audioUrl,
+            format,
+            suggestedTrackName: trackName ?? null,
+          });
 
-        await server.server.sendLoggingMessage({
-          level: "info",
-          data: `🎧 Audio export ready: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
-        });
+          console.log("[Audio Export] Converted via MCP tool", {
+            format: result.format,
+            fileName: result.fileName,
+            audioUrl,
+          });
+
+          await trackMCPTool(
+            toolName,
+            {
+              has_audio_url: !!audioUrl,
+              has_track_name: !!trackName,
+              format,
+            },
+            {
+              success: true,
+              result_format: result.format,
+              file_name: result.fileName,
+              processing_time_ms: Date.now() - startTime,
+            }
+          );
+
+          await server.server.sendLoggingMessage({
+            level: "info",
+            data: `🎧 Audio export ready: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
+          });
+        } catch (err) {
+          error = err instanceof Error ? err.message : "Unknown error";
+          await trackMCPTool(
+            toolName,
+            {
+              has_audio_url: !!audioUrl,
+              has_track_name: !!trackName,
+              format,
+            },
+            {
+              success: false,
+              error,
+            }
+          );
+          throw err;
+        }
 
         return {
           content: [
@@ -618,22 +668,58 @@ export const createServer = () => {
         })
         .parse(rawParams);
 
-      const result = await trimFirst30Seconds({
-        audioUrl,
-        format: format ?? "mp3",
-        suggestedTrackName: trackName ?? null,
-      });
+      const startTime = Date.now();
+      let result;
+      let error: string | undefined;
 
-      console.log("[Audio Trim] Trimmed first 30 seconds via MCP tool", {
-        format: result.format,
-        fileName: result.fileName,
-        audioUrl,
-      });
+      try {
+        result = await trimFirst30Seconds({
+          audioUrl,
+          format: format ?? "mp3",
+          suggestedTrackName: trackName ?? null,
+        });
 
-      await server.server.sendLoggingMessage({
-        level: "info",
-        data: `🎧 First 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
-      });
+        console.log("[Audio Trim] Trimmed first 30 seconds via MCP tool", {
+          format: result.format,
+          fileName: result.fileName,
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.trim_start_of_audio",
+          {
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+            format: format ?? "mp3",
+          },
+          {
+            success: true,
+            result_format: result.format,
+            file_name: result.fileName,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
+
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎧 First 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
+        });
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Unknown error";
+        await trackMCPTool(
+          "audio.trim_start_of_audio",
+          {
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+            format: format ?? "mp3",
+          },
+          {
+            success: false,
+            error,
+          }
+        );
+        throw err;
+      }
 
       return {
         content: [
@@ -702,22 +788,58 @@ export const createServer = () => {
         })
         .parse(rawParams);
 
-      const result = await trimLast30Seconds({
-        audioUrl,
-        format: format ?? "mp3",
-        suggestedTrackName: trackName ?? null,
-      });
+      const startTime = Date.now();
+      let result;
+      let error: string | undefined;
 
-      console.log("[Audio Trim] Trimmed last 30 seconds via MCP tool", {
-        format: result.format,
-        fileName: result.fileName,
-        audioUrl,
-      });
+      try {
+        result = await trimLast30Seconds({
+          audioUrl,
+          format: format ?? "mp3",
+          suggestedTrackName: trackName ?? null,
+        });
 
-      await server.server.sendLoggingMessage({
-        level: "info",
-        data: `🎧 Last 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
-      });
+        console.log("[Audio Trim] Trimmed last 30 seconds via MCP tool", {
+          format: result.format,
+          fileName: result.fileName,
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.trim_end_of_audio",
+          {
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+            format: format ?? "mp3",
+          },
+          {
+            success: true,
+            result_format: result.format,
+            file_name: result.fileName,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
+
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎧 Last 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
+        });
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Unknown error";
+        await trackMCPTool(
+          "audio.trim_end_of_audio",
+          {
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+            format: format ?? "mp3",
+          },
+          {
+            success: false,
+            error,
+          }
+        );
+        throw err;
+      }
 
       return {
         content: [
@@ -801,22 +923,58 @@ export const createServer = () => {
         throw new Error("Either audioFile or audioUrl must be provided");
       }
 
-      const result = await separateVoiceFromMusic({
-        audioUrl,
-        suggestedTrackName: trackName ?? null,
-      });
+      const startTime = Date.now();
+      let result;
+      let error: string | undefined;
 
-      console.log("[Voice Separation] Separated via MCP tool", {
-        trackName: result.trackName,
-        vocalsFileName: result.vocalsFileName,
-        musicFileName: result.musicFileName,
-        audioUrl,
-      });
+      try {
+        result = await separateVoiceFromMusic({
+          audioUrl,
+          suggestedTrackName: trackName ?? null,
+        });
 
-      await server.server.sendLoggingMessage({
-        level: "info",
-        data: `🎤 Voice separation complete: ${result.trackName}\nVocals: ${result.vocalsFileName}\nMusic: ${result.musicFileName}`,
-      });
+        console.log("[Voice Separation] Separated via MCP tool", {
+          trackName: result.trackName,
+          vocalsFileName: result.vocalsFileName,
+          musicFileName: result.musicFileName,
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.separate_voice_from_music",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+          },
+          {
+            success: true,
+            vocals_file_name: result.vocalsFileName,
+            music_file_name: result.musicFileName,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
+
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎤 Voice separation complete: ${result.trackName}\nVocals: ${result.vocalsFileName}\nMusic: ${result.musicFileName}`,
+        });
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Unknown error";
+        await trackMCPTool(
+          "audio.separate_voice_from_music",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+          },
+          {
+            success: false,
+            error,
+          }
+        );
+        throw err;
+      }
 
       return {
         content: [
@@ -906,21 +1064,56 @@ export const createServer = () => {
         throw new Error("Either audioFile or audioUrl must be provided");
       }
 
-      const result = await separateVoiceFromMusic({
-        audioUrl,
-        suggestedTrackName: trackName ?? null,
-      });
+      const startTime = Date.now();
+      let result;
+      let error: string | undefined;
 
-      console.log("[Remove Vocals] Removed vocals via MCP tool", {
-        trackName: result.trackName,
-        musicFileName: result.musicFileName,
-        audioUrl,
-      });
+      try {
+        result = await separateVoiceFromMusic({
+          audioUrl,
+          suggestedTrackName: trackName ?? null,
+        });
 
-      await server.server.sendLoggingMessage({
-        level: "info",
-        data: `🎵 Vocals removed: ${result.trackName}\nInstrumental: ${result.musicFileName}`,
-      });
+        console.log("[Remove Vocals] Removed vocals via MCP tool", {
+          trackName: result.trackName,
+          musicFileName: result.musicFileName,
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.remove_vocals",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+          },
+          {
+            success: true,
+            music_file_name: result.musicFileName,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
+
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎵 Vocals removed: ${result.trackName}\nInstrumental: ${result.musicFileName}`,
+        });
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Unknown error";
+        await trackMCPTool(
+          "audio.remove_vocals",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+          },
+          {
+            success: false,
+            error,
+          }
+        );
+        throw err;
+      }
 
       return {
         content: [
@@ -1004,21 +1197,56 @@ export const createServer = () => {
         throw new Error("Either audioFile or audioUrl must be provided");
       }
 
-      const result = await separateVoiceFromMusic({
-        audioUrl,
-        suggestedTrackName: trackName ?? null,
-      });
+      const startTime = Date.now();
+      let result;
+      let error: string | undefined;
 
-      console.log("[Extract Vocals] Extracted vocals via MCP tool", {
-        trackName: result.trackName,
-        vocalsFileName: result.vocalsFileName,
-        audioUrl,
-      });
+      try {
+        result = await separateVoiceFromMusic({
+          audioUrl,
+          suggestedTrackName: trackName ?? null,
+        });
 
-      await server.server.sendLoggingMessage({
-        level: "info",
-        data: `🎤 Vocals extracted: ${result.trackName}\nVocals: ${result.vocalsFileName}`,
-      });
+        console.log("[Extract Vocals] Extracted vocals via MCP tool", {
+          trackName: result.trackName,
+          vocalsFileName: result.vocalsFileName,
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.extract_vocals",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+          },
+          {
+            success: true,
+            vocals_file_name: result.vocalsFileName,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
+
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎤 Vocals extracted: ${result.trackName}\nVocals: ${result.vocalsFileName}`,
+        });
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Unknown error";
+        await trackMCPTool(
+          "audio.extract_vocals",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+          },
+          {
+            success: false,
+            error,
+          }
+        );
+        throw err;
+      }
 
       return {
         content: [
@@ -1092,37 +1320,71 @@ export const createServer = () => {
         throw new Error("Either audioFile or audioUrl must be provided");
       }
 
-      const result = await detectBPMAndKey({
-        audioUrl,
-      });
+      const startTime = Date.now();
+      let result;
+      let error: string | undefined;
 
-      console.log("[BPM/Key Detection] Detected via MCP tool", {
-        bpm: result.bpm,
-        key: result.key,
-        audioUrl,
-      });
+      try {
+        result = await detectBPMAndKey({
+          audioUrl,
+        });
 
-      const bpmText = result.bpm ? `${result.bpm} BPM` : "BPM detection failed";
-      const keyText = result.key ? result.key : "Key detection failed";
-
-      await server.server.sendLoggingMessage({
-        level: "info",
-        data: `🎵 Audio analysis complete:\nBPM: ${bpmText}\nKey: ${keyText}`,
-      });
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Audio analysis complete!\n\nBPM: ${bpmText}\nKey: ${keyText}`,
-          },
-        ],
-        structuredContent: {
-          type: "audioAnalysis" as const,
+        console.log("[BPM/Key Detection] Detected via MCP tool", {
           bpm: result.bpm,
           key: result.key,
-        },
-      };
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.detect_bpm_and_key",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+          },
+          {
+            success: true,
+            bpm: result.bpm ?? null,
+            key: result.key ?? null,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
+
+        const bpmText = result.bpm ? `${result.bpm} BPM` : "BPM detection failed";
+        const keyText = result.key ? result.key : "Key detection failed";
+
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎵 Audio analysis complete:\nBPM: ${bpmText}\nKey: ${keyText}`,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Audio analysis complete!\n\nBPM: ${bpmText}\nKey: ${keyText}`,
+            },
+          ],
+          structuredContent: {
+            type: "audioAnalysis" as const,
+            bpm: result.bpm,
+            key: result.key,
+          },
+        };
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Unknown error";
+        await trackMCPTool(
+          "audio.detect_bpm_and_key",
+          {
+            has_audio_file: !!audioFile,
+            has_audio_url: !!audioUrl,
+          },
+          {
+            success: false,
+            error,
+          }
+        );
+        throw err;
+      }
     },
   );
 
