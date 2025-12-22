@@ -348,6 +348,7 @@ export function AudioEditor() {
   const [isDraggingStart, setIsDraggingStart] = useState(false);
   const [isDraggingEnd, setIsDraggingEnd] = useState(false);
   const [isDraggingTrimmer, setIsDraggingTrimmer] = useState(false);
+  const wasPlayingBeforeDragRef = useRef(false);
   const waveformRef = useRef(null);
   const waveformSectionRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -362,6 +363,7 @@ export function AudioEditor() {
   const [uploadedAudioUrl, setUploadedAudioUrl] = useState(null);
   const [uploadedFileName, setUploadedFileName] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null); // Store File object to avoid CSP issues
+  const [uploadedS3Url, setUploadedS3Url] = useState(null); // Store S3 URL from BPM detection to avoid re-uploading
   const fileInputRef = useRef(null);
   const audioBufferRef = useRef(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -856,6 +858,7 @@ export function AudioEditor() {
     setUploadedAudioUrl(objectUrl);
     setUploadedFileName(file.name.replace(/\.[^/.]+$/, "")); // Remove extension
     setUploadedFile(file); // Store File object to read directly (avoids CSP fetch issues)
+    setUploadedS3Url(null); // Clear previous S3 URL when new file is uploaded
     
     debugLog('💾 [FILE UPLOAD] State updated - file ready for processing');
     
@@ -1270,6 +1273,7 @@ export function AudioEditor() {
         }
 
         detectionUrl = publicUrl;
+        setUploadedS3Url(publicUrl); // Store S3 URL for reuse in vocal extraction
         debugLog('✅ [BPM/KEY] File uploaded to S3:', publicUrl);
       }
 
@@ -1653,39 +1657,47 @@ export function AudioEditor() {
       let response;
 
       if (audioSource.isUploaded && audioSource.file) {
-        // Upload file to S3 first, then send S3 URL
-        debugLog("📤 [EXTRACT VOCALS] Uploading file to S3 first...");
+        // Reuse S3 URL from BPM detection if available, otherwise upload
+        let s3Url = uploadedS3Url;
         
-        const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fileName: audioSource.file.name,
-            contentType: audioSource.file.type || "audio/mpeg",
-          }),
-        });
+        if (!s3Url) {
+          debugLog("📤 [EXTRACT VOCALS] Uploading file to S3 first...");
+          
+          const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              fileName: audioSource.file.name,
+              contentType: audioSource.file.type || "audio/mpeg",
+            }),
+          });
 
-        if (!presignedUrlResponse.ok) {
-          throw new Error("Failed to get presigned upload URL");
+          if (!presignedUrlResponse.ok) {
+            throw new Error("Failed to get presigned upload URL");
+          }
+
+          const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
+
+          const s3UploadResponse = await fetch(uploadUrl, {
+            method: "PUT",
+            body: audioSource.file,
+            headers: {
+              "Content-Type": audioSource.file.type || "audio/mpeg",
+            },
+          });
+
+          if (!s3UploadResponse.ok) {
+            throw new Error("Failed to upload file to S3");
+          }
+
+          s3Url = publicUrl;
+          setUploadedS3Url(s3Url); // Store for future use
+          debugLog("✅ [EXTRACT VOCALS] File uploaded to S3:", s3Url);
+        } else {
+          debugLog("♻️ [EXTRACT VOCALS] Reusing S3 URL from BPM detection:", s3Url);
         }
-
-        const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
-
-        const s3UploadResponse = await fetch(uploadUrl, {
-          method: "PUT",
-          body: audioSource.file,
-          headers: {
-            "Content-Type": audioSource.file.type || "audio/mpeg",
-          },
-        });
-
-        if (!s3UploadResponse.ok) {
-          throw new Error("Failed to upload file to S3");
-        }
-
-        debugLog("✅ [EXTRACT VOCALS] File uploaded to S3:", publicUrl);
 
         // Call extract vocals endpoint with S3 URL
         response = await fetch(endpoint, {
@@ -1694,7 +1706,7 @@ export function AudioEditor() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            audioUrl: publicUrl,
+            audioUrl: s3Url,
             trackName: trackName || uploadedFileName || "audio-track",
           }),
         });
@@ -2180,9 +2192,12 @@ export function AudioEditor() {
     if (!waveformRef.current) return;
     // Prevent default to avoid scrolling on touch devices
     e.preventDefault();
-    // Stop playback if trying to trim while playing
+    // Track if playback was active before starting drag
     if (isPlaying) {
+      wasPlayingBeforeDragRef.current = true;
       setIsPlaying(false);
+    } else {
+      wasPlayingBeforeDragRef.current = false;
     }
     const rect = waveformRef.current.getBoundingClientRect();
     const x = getClientX(e) - rect.left;
@@ -2202,6 +2217,7 @@ export function AudioEditor() {
     if (isDraggingStart) {
       // Stop playback if trying to trim while playing
       if (isPlaying) {
+        wasPlayingBeforeDragRef.current = true;
         setIsPlaying(false);
       }
       const newStart = Math.min(percentage, endTrim - 0.05); // Ensure start is before end
@@ -2210,12 +2226,18 @@ export function AudioEditor() {
     } else if (isDraggingEnd) {
       // Stop playback if trying to trim while playing
       if (isPlaying) {
+        wasPlayingBeforeDragRef.current = true;
         setIsPlaying(false);
       }
       const newEnd = Math.max(percentage, startTrim + 0.05); // Ensure end is after start
       setEndTrim(newEnd);
       setTrimmerPosition(newEnd);
     } else if (isDraggingTrimmer) {
+      // Stop playback if trying to move trimmer while playing
+      if (isPlaying) {
+        wasPlayingBeforeDragRef.current = true;
+        setIsPlaying(false);
+      }
       setTrimmerPosition(percentage);
     }
   }, [isDraggingStart, isDraggingEnd, isDraggingTrimmer, isPlaying, endTrim, startTrim]);
@@ -2225,18 +2247,27 @@ export function AudioEditor() {
     if (e.type === 'touchend') {
       e.preventDefault();
     }
+    const wasPlaying = wasPlayingBeforeDragRef.current;
     setIsDraggingStart(false);
     setIsDraggingEnd(false);
     setIsDraggingTrimmer(false);
+    wasPlayingBeforeDragRef.current = false;
+    // Restart playback if it was playing before drag started
+    if (wasPlaying) {
+      setTimeout(() => setIsPlaying(true), 100);
+    }
   }, []);
 
   // Handle trim pin start (both mouse and touch)
   const handleTrimPinStart = (type, e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Stop playback if trying to trim while playing
+    // Track if playback was active before starting drag
     if (isPlaying) {
+      wasPlayingBeforeDragRef.current = true;
       setIsPlaying(false);
+    } else {
+      wasPlayingBeforeDragRef.current = false;
     }
     if (type === 'start') {
       setIsDraggingStart(true);
@@ -2587,7 +2618,17 @@ export function AudioEditor() {
               <div className="waveform-toggle-container">
                 <button
                   className={`toggle-switch ${vocalsEnabled ? "enabled" : ""}`}
-                  onClick={() => setVocalsEnabled(!vocalsEnabled)}
+                  onClick={() => {
+                    const wasPlaying = isPlaying;
+                    if (wasPlaying) {
+                      setIsPlaying(false);
+                    }
+                    setVocalsEnabled(!vocalsEnabled);
+                    // Restart playback if it was playing and at least one track will be enabled
+                    if (wasPlaying && (!vocalsEnabled || musicEnabled)) {
+                      setTimeout(() => setIsPlaying(true), 100);
+                    }
+                  }}
                   aria-label="Toggle vocals track"
                 >
                   <div className="toggle-slider" />
@@ -2645,7 +2686,17 @@ export function AudioEditor() {
               <div className="waveform-toggle-container">
                 <button
                   className={`toggle-switch ${musicEnabled ? "enabled" : ""}`}
-                  onClick={() => setMusicEnabled(!musicEnabled)}
+                  onClick={() => {
+                    const wasPlaying = isPlaying;
+                    if (wasPlaying) {
+                      setIsPlaying(false);
+                    }
+                    setMusicEnabled(!musicEnabled);
+                    // Restart playback if it was playing and at least one track will be enabled
+                    if (wasPlaying && (vocalsEnabled || !musicEnabled)) {
+                      setTimeout(() => setIsPlaying(true), 100);
+                    }
+                  }}
                   aria-label="Toggle music track"
                 >
                   <div className="toggle-slider" />

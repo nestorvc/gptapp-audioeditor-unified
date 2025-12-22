@@ -50,7 +50,7 @@ const DEFAULT_TMP_PREFIX = "audio";
 const TEMP_DIR = process.env.VERCEL ? "/tmp" : path.join(projectRoot, "tmp");
 const s3Region = process.env.AWS_REGION;
 const s3Bucket = process.env.S3_BUCKET;
-const s3RingtonesFolder = process.env.S3_RINGTONES_FOLDER;
+const s3ExportsFolder = process.env.S3_EXPORTS_FOLDER;
 const s3UploadsFolder = process.env.S3_UPLOADS_FOLDER;
 const s3PublicBaseUrl = process.env.S3_PUBLIC_BASE_URL ?? "";
 const s3ObjectAcl = process.env.S3_OBJECT_ACL ?? undefined;
@@ -92,7 +92,7 @@ const s3UploadConfig: S3UploadConfig = {
   client: s3Client,
   bucket: s3Bucket,
   region: s3Region,
-  keyPrefix: s3RingtonesFolder,
+  keyPrefix: s3ExportsFolder,
   publicBaseUrl: s3PublicBaseUrl,
   objectAcl: s3ObjectAcl,
 };

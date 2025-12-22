@@ -513,6 +513,10 @@ body {
   width: 40px;
 }
 
+.vocals-mode-end-pin {
+  top: 200px;
+}
+
 /* Ensure SVG pins are properly styled */
 .trim-pin svg {
   display: block;
