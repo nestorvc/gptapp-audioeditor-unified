@@ -1835,7 +1835,19 @@ export function AudioEditor() {
       let response;
 
       // If in dual mode with both tracks enabled, use original audio (same as single track)
-      if (isVocalsMode && vocalsEnabled && musicEnabled) {
+      // Check explicitly for both tracks being enabled (true boolean values)
+      const bothTracksEnabled = isVocalsMode && vocalsEnabled === true && musicEnabled === true;
+      
+      debugLog("📤 [AUDIO EXPORT] Export conditions:", {
+        isVocalsMode,
+        vocalsEnabled,
+        musicEnabled,
+        bothTracksEnabled,
+        vocalsAudioUrl: !!vocalsAudioUrl,
+        musicAudioUrl: !!musicAudioUrl,
+      });
+      
+      if (bothTracksEnabled) {
         const audioSource = getAudioSource();
         if (!audioSource) {
           throw new Error("No audio source available");
@@ -1918,8 +1930,10 @@ export function AudioEditor() {
             body: params.toString(),
           });
         }
-      } else if (isVocalsMode && vocalsAudioUrl && musicAudioUrl) {
+      } else if (isVocalsMode && vocalsAudioUrl && musicAudioUrl && !(vocalsEnabled === true && musicEnabled === true)) {
         // Dual track export - one or both tracks disabled, use separated tracks
+        // IMPORTANT: Only use dual track processing if NOT both enabled (to avoid ffmpeg filter conflicts)
+        debugLog("📤 [AUDIO EXPORT] Using dual track processing (one or both tracks disabled)");
         const params = new URLSearchParams();
         params.append("vocalsUrl", vocalsAudioUrl);
         params.append("musicUrl", musicAudioUrl);
