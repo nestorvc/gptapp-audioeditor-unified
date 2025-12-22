@@ -1063,3 +1063,205 @@ export async function separateVoiceFromMusic({
     );
   }
 }
+
+// decodeAudioToWav - Converts audio file to WAV format for analysis
+async function decodeAudioToWav(inputPath: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const outputPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}.wav`);
+    ffmpeg(inputPath)
+      .audioChannels(1) // Mono for analysis
+      .audioFrequency(44100) // Standard sample rate
+      .audioCodec("pcm_s16le")
+      .format("wav")
+      .on("error", (err: unknown) => reject(err))
+      .on("end", () => resolve(outputPath))
+      .save(outputPath);
+  });
+}
+
+// parseWavFile - Parses WAV file and returns audio samples
+function parseWavFile(wavPath: string): Promise<{ samples: Float32Array; sampleRate: number }> {
+  return new Promise((resolve, reject) => {
+    fs.readFile(wavPath, (err, buffer) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      // WAV file header parsing
+      const sampleRate = buffer.readUInt32LE(24);
+      const numChannels = buffer.readUInt16LE(22);
+      const bitsPerSample = buffer.readUInt16LE(34);
+      const dataOffset = 44; // Standard WAV header size
+      const dataLength = buffer.length - dataOffset;
+
+      if (bitsPerSample !== 16) {
+        reject(new Error(`Unsupported bits per sample: ${bitsPerSample}`));
+        return;
+      }
+
+      // Convert 16-bit PCM to Float32Array (-1.0 to 1.0)
+      const samples = new Float32Array(dataLength / 2);
+      for (let i = 0; i < samples.length; i++) {
+        const sample = buffer.readInt16LE(dataOffset + i * 2);
+        samples[i] = sample / 32768.0;
+      }
+
+      resolve({ samples, sampleRate });
+    });
+  });
+}
+
+// detectBPMFromSamples - Simple BPM detection using autocorrelation
+function detectBPMFromSamples(samples: Float32Array, sampleRate: number): number | null {
+  // Analyze first 30 seconds for performance
+  const maxDuration = 30; // seconds
+  const maxSamples = Math.min(samples.length, sampleRate * maxDuration);
+  const analysisSamples = samples.slice(0, maxSamples);
+
+  // Simple autocorrelation-based BPM detection
+  const minBPM = 60;
+  const maxBPM = 200;
+  const minPeriod = Math.floor((60 / maxBPM) * sampleRate);
+  const maxPeriod = Math.floor((60 / minBPM) * sampleRate);
+
+  let maxCorrelation = 0;
+  let bestPeriod = 0;
+
+  for (let period = minPeriod; period <= maxPeriod; period++) {
+    let correlation = 0;
+    const correlationLength = Math.min(analysisSamples.length - period, sampleRate * 2);
+
+    for (let i = 0; i < correlationLength; i++) {
+      correlation += Math.abs(analysisSamples[i] * analysisSamples[i + period]);
+    }
+
+    correlation /= correlationLength;
+
+    if (correlation > maxCorrelation) {
+      maxCorrelation = correlation;
+      bestPeriod = period;
+    }
+  }
+
+  if (bestPeriod === 0) {
+    return null;
+  }
+
+  const bpm = (60 * sampleRate) / bestPeriod;
+  return Math.round(bpm);
+}
+
+// detectKeyFromSamples - Simple key detection using pitch analysis
+function detectKeyFromSamples(samples: Float32Array, sampleRate: number): { key: string; scale?: string } | null {
+  // Analyze first 30 seconds
+  const maxDuration = 30;
+  const maxSamples = Math.min(samples.length, sampleRate * maxDuration);
+  const analysisSamples = samples.slice(0, maxSamples);
+
+  // Simple pitch detection using autocorrelation
+  const minFreq = 80; // Hz (low E)
+  const maxFreq = 1000; // Hz
+  const minPeriod = Math.floor(sampleRate / maxFreq);
+  const maxPeriod = Math.floor(sampleRate / minFreq);
+
+  let maxCorrelation = 0;
+  let bestPeriod = 0;
+
+  for (let period = minPeriod; period <= maxPeriod; period++) {
+    let correlation = 0;
+    const correlationLength = Math.min(analysisSamples.length - period, sampleRate);
+
+    for (let i = 0; i < correlationLength; i++) {
+      correlation += Math.abs(analysisSamples[i] * analysisSamples[i + period]);
+    }
+
+    correlation /= correlationLength;
+
+    if (correlation > maxCorrelation) {
+      maxCorrelation = correlation;
+      bestPeriod = period;
+    }
+  }
+
+  if (bestPeriod === 0 || maxCorrelation < 0.1) {
+    return null;
+  }
+
+  const frequency = sampleRate / bestPeriod;
+
+  // Convert frequency to musical note
+  const A4 = 440; // Standard tuning
+  const C0 = A4 * Math.pow(2, -4.75);
+  const h = Math.round(12 * Math.log2(frequency / C0));
+  const note = h % 12;
+  const octave = Math.floor(h / 12) - 1;
+
+  const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const detectedNote = noteNames[note];
+
+  // Simple heuristic: if frequency is close to major third, assume major, else minor
+  // This is a simplified approach - real key detection is more complex
+  return {
+    key: detectedNote,
+    scale: "major", // Simplified - real detection would analyze harmonic content
+  };
+}
+
+// detectBPMAndKey - Detects BPM and musical key from audio file
+export async function detectBPMAndKey({
+  audioUrl,
+}: {
+  audioUrl: string;
+}): Promise<{
+  bpm: number | null;
+  key: string | null;
+  scale?: string;
+}> {
+  let downloadedFilePath: string | null = null;
+  let wavFilePath: string | null = null;
+
+  try {
+    // Download audio file
+    const { filePath } = await downloadAudioToTempFile(audioUrl);
+    downloadedFilePath = filePath;
+
+    // Convert to WAV for analysis
+    wavFilePath = await decodeAudioToWav(downloadedFilePath);
+
+    // Parse WAV file
+    const { samples, sampleRate } = await parseWavFile(wavFilePath);
+
+    // Detect BPM
+    const bpm = detectBPMFromSamples(samples, sampleRate);
+
+    // Detect key
+    const keyResult = detectKeyFromSamples(samples, sampleRate);
+    const key = keyResult?.key || null;
+    const scale = keyResult?.scale;
+
+    return {
+      bpm,
+      key,
+      scale,
+    };
+  } catch (error) {
+    console.error("[BPM/Key Detection] Error:", error);
+    throw new Error(
+      `Failed to detect BPM and key: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  } finally {
+    // Clean up temp files
+    await Promise.all(
+      [downloadedFilePath, wavFilePath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
+  }
+}

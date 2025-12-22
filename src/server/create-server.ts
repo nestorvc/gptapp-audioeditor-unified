@@ -57,6 +57,7 @@ import {
   trimFirst30Seconds,
   trimLast30Seconds,
   separateVoiceFromMusic,
+  detectBPMAndKey,
   AUDIO_EXPORT_FORMATS,
   type AudioExportFormat,
 } from "./services/audio.js";
@@ -789,6 +790,229 @@ export const createServer = () => {
             fileName: result.musicFileName,
           },
           trackName: result.trackName,
+        },
+      };
+    },
+  );
+
+  /* Remove Vocals Tool */
+  server.registerTool(
+    "audio.remove_vocals",
+    {
+      title: "Remove Vocals",
+      description:
+        "Removes vocals from an audio file, returning only the instrumental music track without vocals.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio file to remove vocals from. Example: https://cdn.example.com/audio/song.mp3",
+          ),
+        trackName: z
+          .string()
+          .max(80, "Track name must be 80 characters or fewer.")
+          .optional()
+          .describe("Optional display name for the output file. Example: My_Song_Instrumental"),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Removing vocals from audio",
+        "openai/toolInvocation/invoked": "Vocals removed, instrumental track ready",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl, trackName } = z
+        .object({
+          audioUrl: z
+            .string()
+            .url("Provide a valid HTTPS URL to the source audio file.")
+            .describe(
+              "Public HTTPS URL of the audio file to remove vocals from. Example: https://cdn.example.com/audio/song.mp3",
+            ),
+          trackName: z
+            .string()
+            .max(80, "Track name must be 80 characters or fewer.")
+            .optional()
+            .describe("Optional display name for the output file. Example: My_Song_Instrumental"),
+        })
+        .parse(rawParams);
+
+      const result = await separateVoiceFromMusic({
+        audioUrl,
+        suggestedTrackName: trackName ?? null,
+      });
+
+      console.log("[Remove Vocals] Removed vocals via MCP tool", {
+        trackName: result.trackName,
+        musicFileName: result.musicFileName,
+        audioUrl,
+      });
+
+      await server.server.sendLoggingMessage({
+        level: "info",
+        data: `🎵 Vocals removed: ${result.trackName}\nInstrumental: ${result.musicFileName}`,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Vocals removed successfully!\n\nInstrumental track: ${result.musicFileName}\nDownload: ${result.musicUrl}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioDownload" as const,
+          downloadUrl: result.musicUrl,
+          fileName: result.musicFileName,
+          format: "instrumental",
+        },
+      };
+    },
+  );
+
+  /* Extract Vocals Tool */
+  server.registerTool(
+    "audio.extract_vocals",
+    {
+      title: "Extract Vocals",
+      description:
+        "Extracts vocals from an audio file, returning only the vocal track without the instrumental music.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio file to extract vocals from. Example: https://cdn.example.com/audio/song.mp3",
+          ),
+        trackName: z
+          .string()
+          .max(80, "Track name must be 80 characters or fewer.")
+          .optional()
+          .describe("Optional display name for the output file. Example: My_Song_Vocals"),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Extracting vocals from audio",
+        "openai/toolInvocation/invoked": "Vocals extracted, vocal track ready",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl, trackName } = z
+        .object({
+          audioUrl: z
+            .string()
+            .url("Provide a valid HTTPS URL to the source audio file.")
+            .describe(
+              "Public HTTPS URL of the audio file to extract vocals from. Example: https://cdn.example.com/audio/song.mp3",
+            ),
+          trackName: z
+            .string()
+            .max(80, "Track name must be 80 characters or fewer.")
+            .optional()
+            .describe("Optional display name for the output file. Example: My_Song_Vocals"),
+        })
+        .parse(rawParams);
+
+      const result = await separateVoiceFromMusic({
+        audioUrl,
+        suggestedTrackName: trackName ?? null,
+      });
+
+      console.log("[Extract Vocals] Extracted vocals via MCP tool", {
+        trackName: result.trackName,
+        vocalsFileName: result.vocalsFileName,
+        audioUrl,
+      });
+
+      await server.server.sendLoggingMessage({
+        level: "info",
+        data: `🎤 Vocals extracted: ${result.trackName}\nVocals: ${result.vocalsFileName}`,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Vocals extracted successfully!\n\nVocal track: ${result.vocalsFileName}\nDownload: ${result.vocalsUrl}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioDownload" as const,
+          downloadUrl: result.vocalsUrl,
+          fileName: result.vocalsFileName,
+          format: "vocals",
+        },
+      };
+    },
+  );
+
+  /* BPM and Key Detection Tool */
+  server.registerTool(
+    "audio.detect_bpm_and_key",
+    {
+      title: "Detect BPM and Key",
+      description:
+        "Analyzes an audio file to detect its BPM (beats per minute/tempo) and musical key.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio file to analyze. Example: https://cdn.example.com/audio/song.mp3",
+          ),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Analyzing audio for BPM and key",
+        "openai/toolInvocation/invoked": "BPM and key detected",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl } = z
+        .object({
+          audioUrl: z
+            .string()
+            .url("Provide a valid HTTPS URL to the source audio file.")
+            .describe(
+              "Public HTTPS URL of the audio file to analyze. Example: https://cdn.example.com/audio/song.mp3",
+            ),
+        })
+        .parse(rawParams);
+
+      const result = await detectBPMAndKey({
+        audioUrl,
+      });
+
+      console.log("[BPM/Key Detection] Detected via MCP tool", {
+        bpm: result.bpm,
+        key: result.key,
+        scale: result.scale,
+        audioUrl,
+      });
+
+      const bpmText = result.bpm ? `${result.bpm} BPM` : "BPM detection failed";
+      const keyText = result.key
+        ? `${result.key}${result.scale ? ` ${result.scale}` : ""}`
+        : "Key detection failed";
+
+      await server.server.sendLoggingMessage({
+        level: "info",
+        data: `🎵 Audio analysis complete:\nBPM: ${bpmText}\nKey: ${keyText}`,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Audio analysis complete!\n\nBPM: ${bpmText}\nKey: ${keyText}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioAnalysis" as const,
+          bpm: result.bpm,
+          key: result.key,
+          scale: result.scale,
         },
       };
     },
