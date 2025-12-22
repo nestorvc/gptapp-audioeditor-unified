@@ -194,6 +194,12 @@ body {
   pointer-events: none;
 }
 
+/* Hide fade gradients when loading */
+.track-name-marquee.loading::before,
+.track-name-marquee.loading::after {
+  display: none;
+}
+
 /* Right fade gradient */
 .track-name-marquee::after {
   content: '';
@@ -218,6 +224,17 @@ body {
 
 .marquee-content:hover {
   animation-play-state: paused;
+}
+
+/* Loading state - centered, no animation */
+.marquee-content.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-right: 0;
+  animation: none;
+  gap: 8px;
 }
 
 @keyframes marquee {

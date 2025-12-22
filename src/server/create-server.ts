@@ -206,6 +206,11 @@ export const createServer = () => {
           })
           .optional()
           .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
+        audioUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe("Optional public HTTPS URL to an audio file. Use this when the user provides a direct link to an audio file."),
       },
       _meta: {
         "openai/outputTemplate": audioEditorUri,
@@ -216,7 +221,7 @@ export const createServer = () => {
       annotations: { readOnlyHint: true },
     },
     async (rawParams) => {
-      const { audioFile } = z
+      const { audioFile, audioUrl: providedAudioUrl } = z
         .object({
           audioFile: z
             .object({
@@ -224,10 +229,16 @@ export const createServer = () => {
               file_id: z.string(),
             })
             .optional(),
+          audioUrl: z
+            .string()
+            .url()
+            .optional()
+            .describe("Optional public HTTPS URL to an audio file."),
         })
         .parse(rawParams);
 
-      const audioUrl = audioFile?.download_url ?? null;
+      // Priority: provided audioUrl > audioFile download_url
+      const audioUrl = providedAudioUrl ?? audioFile?.download_url ?? null;
 
       return {
         content: [
@@ -266,6 +277,11 @@ export const createServer = () => {
           })
           .optional()
           .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
+        audioUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe("Optional public HTTPS URL to an audio file. Use this when the user provides a direct link to an audio file."),
       },
       _meta: {
         "openai/outputTemplate": audioEditorUri,
@@ -276,7 +292,7 @@ export const createServer = () => {
       annotations: { readOnlyHint: true },
     },
     async (rawParams) => {
-      const { audioFile } = z
+      const { audioFile, audioUrl: providedAudioUrl } = z
         .object({
           audioFile: z
             .object({
@@ -284,10 +300,16 @@ export const createServer = () => {
               file_id: z.string(),
             })
             .optional(),
+          audioUrl: z
+            .string()
+            .url()
+            .optional()
+            .describe("Optional public HTTPS URL to an audio file."),
         })
         .parse(rawParams);
 
-      const audioUrl = audioFile?.download_url ?? null;
+      // Priority: provided audioUrl > audioFile download_url
+      const audioUrl = providedAudioUrl ?? audioFile?.download_url ?? null;
 
       return {
         content: [
@@ -720,11 +742,19 @@ export const createServer = () => {
       description:
         "Separates vocals from music in an audio file, returning two separate tracks: one with vocals and one with instrumental music.",
       inputSchema: {
+        audioFile: z
+          .object({
+            download_url: z.string().url(),
+            file_id: z.string(),
+          })
+          .optional()
+          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
         audioUrl: z
           .string()
           .url("Provide a valid HTTPS URL to the source audio file.")
+          .optional()
           .describe(
-            "Public HTTPS URL of the audio file to separate. Example: https://cdn.example.com/audio/song.mp3",
+            "Optional public HTTPS URL of the audio file to separate. Example: https://cdn.example.com/audio/song.mp3",
           ),
         trackName: z
           .string()
@@ -735,17 +765,25 @@ export const createServer = () => {
       _meta: {
         "openai/toolInvocation/invoking": "Separating vocals from music",
         "openai/toolInvocation/invoked": "Voice and music tracks separated",
+        "openai/fileParams": ["audioFile"],
       },
       annotations: { readOnlyHint: true },
     },
     async (rawParams) => {
-      const { audioUrl, trackName } = z
+      const { audioFile, audioUrl: providedAudioUrl, trackName } = z
         .object({
+          audioFile: z
+            .object({
+              download_url: z.string().url(),
+              file_id: z.string(),
+            })
+            .optional(),
           audioUrl: z
             .string()
             .url("Provide a valid HTTPS URL to the source audio file.")
+            .optional()
             .describe(
-              "Public HTTPS URL of the audio file to separate. Example: https://cdn.example.com/audio/song.mp3",
+              "Optional public HTTPS URL of the audio file to separate. Example: https://cdn.example.com/audio/song.mp3",
             ),
           trackName: z
             .string()
@@ -754,6 +792,12 @@ export const createServer = () => {
             .describe("Optional display name for the output files. Example: My_Song"),
         })
         .parse(rawParams);
+
+      // Priority: audioFile.download_url > providedAudioUrl
+      const audioUrl = audioFile?.download_url ?? providedAudioUrl;
+      if (!audioUrl) {
+        throw new Error("Either audioFile or audioUrl must be provided");
+      }
 
       const result = await separateVoiceFromMusic({
         audioUrl,
@@ -803,11 +847,19 @@ export const createServer = () => {
       description:
         "Removes vocals from an audio file, returning only the instrumental music track without vocals.",
       inputSchema: {
+        audioFile: z
+          .object({
+            download_url: z.string().url(),
+            file_id: z.string(),
+          })
+          .optional()
+          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
         audioUrl: z
           .string()
           .url("Provide a valid HTTPS URL to the source audio file.")
+          .optional()
           .describe(
-            "Public HTTPS URL of the audio file to remove vocals from. Example: https://cdn.example.com/audio/song.mp3",
+            "Optional public HTTPS URL of the audio file to remove vocals from. Example: https://cdn.example.com/audio/song.mp3",
           ),
         trackName: z
           .string()
@@ -818,17 +870,25 @@ export const createServer = () => {
       _meta: {
         "openai/toolInvocation/invoking": "Removing vocals from audio",
         "openai/toolInvocation/invoked": "Vocals removed, instrumental track ready",
+        "openai/fileParams": ["audioFile"],
       },
       annotations: { readOnlyHint: true },
     },
     async (rawParams) => {
-      const { audioUrl, trackName } = z
+      const { audioFile, audioUrl: providedAudioUrl, trackName } = z
         .object({
+          audioFile: z
+            .object({
+              download_url: z.string().url(),
+              file_id: z.string(),
+            })
+            .optional(),
           audioUrl: z
             .string()
             .url("Provide a valid HTTPS URL to the source audio file.")
+            .optional()
             .describe(
-              "Public HTTPS URL of the audio file to remove vocals from. Example: https://cdn.example.com/audio/song.mp3",
+              "Optional public HTTPS URL of the audio file to remove vocals from. Example: https://cdn.example.com/audio/song.mp3",
             ),
           trackName: z
             .string()
@@ -837,6 +897,12 @@ export const createServer = () => {
             .describe("Optional display name for the output file. Example: My_Song_Instrumental"),
         })
         .parse(rawParams);
+
+      // Priority: audioFile.download_url > providedAudioUrl
+      const audioUrl = audioFile?.download_url ?? providedAudioUrl;
+      if (!audioUrl) {
+        throw new Error("Either audioFile or audioUrl must be provided");
+      }
 
       const result = await separateVoiceFromMusic({
         audioUrl,
@@ -879,11 +945,19 @@ export const createServer = () => {
       description:
         "Extracts vocals from an audio file, returning only the vocal track without the instrumental music.",
       inputSchema: {
+        audioFile: z
+          .object({
+            download_url: z.string().url(),
+            file_id: z.string(),
+          })
+          .optional()
+          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
         audioUrl: z
           .string()
           .url("Provide a valid HTTPS URL to the source audio file.")
+          .optional()
           .describe(
-            "Public HTTPS URL of the audio file to extract vocals from. Example: https://cdn.example.com/audio/song.mp3",
+            "Optional public HTTPS URL of the audio file to extract vocals from. Example: https://cdn.example.com/audio/song.mp3",
           ),
         trackName: z
           .string()
@@ -894,17 +968,25 @@ export const createServer = () => {
       _meta: {
         "openai/toolInvocation/invoking": "Extracting vocals from audio",
         "openai/toolInvocation/invoked": "Vocals extracted, vocal track ready",
+        "openai/fileParams": ["audioFile"],
       },
       annotations: { readOnlyHint: true },
     },
     async (rawParams) => {
-      const { audioUrl, trackName } = z
+      const { audioFile, audioUrl: providedAudioUrl, trackName } = z
         .object({
+          audioFile: z
+            .object({
+              download_url: z.string().url(),
+              file_id: z.string(),
+            })
+            .optional(),
           audioUrl: z
             .string()
             .url("Provide a valid HTTPS URL to the source audio file.")
+            .optional()
             .describe(
-              "Public HTTPS URL of the audio file to extract vocals from. Example: https://cdn.example.com/audio/song.mp3",
+              "Optional public HTTPS URL of the audio file to extract vocals from. Example: https://cdn.example.com/audio/song.mp3",
             ),
           trackName: z
             .string()
@@ -913,6 +995,12 @@ export const createServer = () => {
             .describe("Optional display name for the output file. Example: My_Song_Vocals"),
         })
         .parse(rawParams);
+
+      // Priority: audioFile.download_url > providedAudioUrl
+      const audioUrl = audioFile?.download_url ?? providedAudioUrl;
+      if (!audioUrl) {
+        throw new Error("Either audioFile or audioUrl must be provided");
+      }
 
       const result = await separateVoiceFromMusic({
         audioUrl,
@@ -955,30 +1043,52 @@ export const createServer = () => {
       description:
         "Analyzes an audio file to detect its BPM (beats per minute/tempo) and musical key.",
       inputSchema: {
+        audioFile: z
+          .object({
+            download_url: z.string().url(),
+            file_id: z.string(),
+          })
+          .optional()
+          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
         audioUrl: z
           .string()
           .url("Provide a valid HTTPS URL to the source audio file.")
+          .optional()
           .describe(
-            "Public HTTPS URL of the audio file to analyze. Example: https://cdn.example.com/audio/song.mp3",
+            "Optional public HTTPS URL of the audio file to analyze. Example: https://cdn.example.com/audio/song.mp3",
           ),
       },
       _meta: {
         "openai/toolInvocation/invoking": "Analyzing audio for BPM and key",
         "openai/toolInvocation/invoked": "BPM and key detected",
+        "openai/fileParams": ["audioFile"],
       },
       annotations: { readOnlyHint: true },
     },
     async (rawParams) => {
-      const { audioUrl } = z
+      const { audioFile, audioUrl: providedAudioUrl } = z
         .object({
+          audioFile: z
+            .object({
+              download_url: z.string().url(),
+              file_id: z.string(),
+            })
+            .optional(),
           audioUrl: z
             .string()
             .url("Provide a valid HTTPS URL to the source audio file.")
+            .optional()
             .describe(
-              "Public HTTPS URL of the audio file to analyze. Example: https://cdn.example.com/audio/song.mp3",
+              "Optional public HTTPS URL of the audio file to analyze. Example: https://cdn.example.com/audio/song.mp3",
             ),
         })
         .parse(rawParams);
+
+      // Priority: audioFile.download_url > providedAudioUrl
+      const audioUrl = audioFile?.download_url ?? providedAudioUrl;
+      if (!audioUrl) {
+        throw new Error("Either audioFile or audioUrl must be provided");
+      }
 
       const result = await detectBPMAndKey({
         audioUrl,
@@ -987,14 +1097,11 @@ export const createServer = () => {
       console.log("[BPM/Key Detection] Detected via MCP tool", {
         bpm: result.bpm,
         key: result.key,
-        scale: result.scale,
         audioUrl,
       });
 
       const bpmText = result.bpm ? `${result.bpm} BPM` : "BPM detection failed";
-      const keyText = result.key
-        ? `${result.key}${result.scale ? ` ${result.scale}` : ""}`
-        : "Key detection failed";
+      const keyText = result.key ? result.key : "Key detection failed";
 
       await server.server.sendLoggingMessage({
         level: "info",
@@ -1012,7 +1119,6 @@ export const createServer = () => {
           type: "audioAnalysis" as const,
           bpm: result.bpm,
           key: result.key,
-          scale: result.scale,
         },
       };
     },

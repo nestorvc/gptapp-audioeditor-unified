@@ -338,6 +338,9 @@ export function AudioEditor() {
   const [audioSampleRate, setAudioSampleRate] = useState(0);
   const [fileSize, setFileSize] = useState(0);
   const [audioFormat, setAudioFormat] = useState("");
+  const [bpm, setBpm] = useState(null);
+  const [key, setKey] = useState(null);
+  const [isDetectingBPMKey, setIsDetectingBPMKey] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [startTrim, setStartTrim] = useState(0.2);
   const [endTrim, setEndTrim] = useState(0.6);
@@ -485,34 +488,29 @@ export function AudioEditor() {
   const formatMarqueeText = () => {
     const parts = [];
     
-    // Only include technical metadata - never include trackName or file name
+    // Only include Sample rate, BPM, and Key
     if (audioSampleRate > 0) {
       parts.push(`Sample rate: ${formatSampleRate(audioSampleRate)}`);
     }
     
-    if (fileSize > 0) {
-      parts.push(`File size: ${formatFileSize(fileSize)}`);
+    if (bpm !== null && bpm > 0) {
+      parts.push(`BPM: ${bpm}`);
     }
     
-    if (audioChannels > 0) {
-      parts.push(`Channels: ${formatChannels(audioChannels)}`);
-    }
-    
-    if (totalDuration > 0) {
-      parts.push(`Duration: ${formatDuration(totalDuration)}`);
-    }
-    
-    if (audioFormat) {
-      // Display format with dot prefix (e.g., ".mp3")
-      const formatWithDot = audioFormat.startsWith('.') ? audioFormat : `.${audioFormat.toLowerCase()}`;
-      parts.push(`Format: ${formatWithDot}`);
+    if (key) {
+      parts.push(`Key: ${key}`);
     }
     
     return parts.join(" • ");
   };
 
-  // Update duplicated text when metadata changes
+  // Update duplicated text when metadata changes (skip when loading)
   useEffect(() => {
+    // Don't update duplicated text when loading - loading state is handled separately
+    if (isDetectingBPMKey) {
+      return;
+    }
+    
     const marqueeText = formatMarqueeText();
     if (marqueeContentRef.current) {
       const updateDuplicatedText = () => {
@@ -549,7 +547,7 @@ export function AudioEditor() {
       window.addEventListener('resize', updateDuplicatedText);
       return () => window.removeEventListener('resize', updateDuplicatedText);
     }
-  }, [totalDuration, audioChannels, audioSampleRate, fileSize, audioFormat]);
+  }, [audioSampleRate, bpm, key, isDetectingBPMKey]);
 
   const selectedStart = startTrim * totalDuration;
   const selectedEnd = endTrim * totalDuration;
@@ -888,8 +886,16 @@ export function AudioEditor() {
     // If no audio source, don't try to load
     if (!audioSource) {
       setIsLoading(false);
+      setIsDetectingBPMKey(false);
+      setBpm(null);
+      setKey(null);
       return;
     }
+
+    // Reset BPM/Key detection state when loading new audio
+    setIsDetectingBPMKey(false);
+    setBpm(null);
+    setKey(null);
 
     // Note: window.openai is a Proxy object and cannot be cloned/logged directly
     // Log only available file-related properties if needed
@@ -1135,6 +1141,9 @@ export function AudioEditor() {
         });
         
         setIsLoading(false);
+        
+        // Detect BPM and Key after audio loads successfully
+        detectBPMAndKey(audioSource);
       } catch (error) {
         console.error("❌ [AUDIO LOAD] Error loading audio:", {
           error: error.message,
@@ -1164,6 +1173,96 @@ export function AudioEditor() {
 
     loadAudio();
   }, [uploadedAudioUrl, toolOutput?.audioUrl]);
+
+  // Detect BPM and Key from audio
+  const detectBPMAndKey = async (audioSource) => {
+    setIsDetectingBPMKey(true);
+    try {
+      const runtimeApiUrl = typeof window !== 'undefined' && window.__API_BASE_URL__;
+      if (!runtimeApiUrl) {
+        debugLog('⚠️ [BPM/KEY] API URL not available, skipping detection');
+        setIsDetectingBPMKey(false);
+        return;
+      }
+
+      let detectionUrl = audioSource.url;
+      
+      // For uploaded files, upload to S3 first to get a public URL
+      if (audioSource.isUploaded && audioSource.file) {
+        debugLog('📤 [BPM/KEY] Uploading file to S3 for detection...');
+        
+        const presignedUrlResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/s3-presigned-url`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName: audioSource.file.name,
+            contentType: audioSource.file.type || "audio/mpeg",
+          }),
+        });
+
+        if (!presignedUrlResponse.ok) {
+          debugLog('⚠️ [BPM/KEY] Failed to get presigned URL, skipping detection');
+          setIsDetectingBPMKey(false);
+          return;
+        }
+
+        const { uploadUrl, publicUrl } = await presignedUrlResponse.json();
+
+        const s3UploadResponse = await fetch(uploadUrl, {
+          method: "PUT",
+          body: audioSource.file,
+          headers: {
+            "Content-Type": audioSource.file.type || "audio/mpeg",
+          },
+        });
+
+        if (!s3UploadResponse.ok) {
+          debugLog('⚠️ [BPM/KEY] Failed to upload to S3, skipping detection');
+          setIsDetectingBPMKey(false);
+          return;
+        }
+
+        detectionUrl = publicUrl;
+        debugLog('✅ [BPM/KEY] File uploaded to S3:', publicUrl);
+      }
+
+      // Call detection API
+      debugLog('🔍 [BPM/KEY] Detecting BPM and Key...');
+      const detectionResponse = await fetch(`${runtimeApiUrl.replace(/\/$/, "")}/api/detect-bpm-key`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          audioUrl: detectionUrl,
+        }),
+      });
+
+      if (!detectionResponse.ok) {
+        debugLog('⚠️ [BPM/KEY] Detection API failed:', detectionResponse.status);
+        setIsDetectingBPMKey(false);
+        return;
+      }
+
+      const result = await detectionResponse.json();
+      debugLog('✅ [BPM/KEY] Detection complete:', result);
+
+      if (result.bpm !== null && result.bpm !== undefined) {
+        setBpm(result.bpm);
+      }
+      if (result.key) {
+        setKey(result.key);
+      }
+      
+      setIsDetectingBPMKey(false);
+    } catch (error) {
+      // Silently fail - BPM/Key detection is optional
+      debugLog('⚠️ [BPM/KEY] Detection error (non-critical):', error.message);
+      setIsDetectingBPMKey(false);
+    }
+  };
 
   // Cleanup object URL on unmount or when changing files
   useEffect(() => {
@@ -1811,12 +1910,19 @@ export function AudioEditor() {
           )}
         </button>
 
-        <div className="track-name-marquee">
+        <div className={`track-name-marquee ${isDetectingBPMKey ? 'loading' : ''}`}>
           <div 
             ref={marqueeContentRef}
-            className="marquee-content"
+            className={`marquee-content ${isDetectingBPMKey ? 'loading' : ''}`}
           >
-            <span>{duplicatedText || formatMarqueeText() || "Loading..."}</span>
+            {isDetectingBPMKey ? (
+              <>
+                <span className="spinner" aria-hidden="true" />
+                <span>Loading audio attributes...</span>
+              </>
+            ) : (
+              <span>{duplicatedText || formatMarqueeText()}</span>
+            )}
           </div>
         </div>
 

@@ -1100,11 +1100,29 @@ function parseWavFile(wavPath: string): Promise<{ samples: Float32Array; sampleR
         return;
       }
 
-      // Convert 16-bit PCM to Float32Array (-1.0 to 1.0)
-      const samples = new Float32Array(dataLength / 2);
-      for (let i = 0; i < samples.length; i++) {
-        const sample = buffer.readInt16LE(dataOffset + i * 2);
-        samples[i] = sample / 32768.0;
+      // Calculate samples per channel (accounting for interleaved channels)
+      const samplesPerChannel = dataLength / (2 * numChannels);
+      const samples = new Float32Array(samplesPerChannel);
+
+      if (numChannels === 1) {
+        // Mono: simple conversion
+        for (let i = 0; i < samples.length; i++) {
+          const sample = buffer.readInt16LE(dataOffset + i * 2);
+          samples[i] = sample / 32768.0;
+        }
+      } else {
+        // Stereo (or multi-channel): average channels to mono
+        // Stereo WAV files store interleaved samples: L, R, L, R, ...
+        for (let i = 0; i < samples.length; i++) {
+          const leftIdx = dataOffset + (i * numChannels * 2);
+          const rightIdx = leftIdx + 2;
+          
+          const leftSample = buffer.readInt16LE(leftIdx) / 32768.0;
+          const rightSample = buffer.readInt16LE(rightIdx) / 32768.0;
+          
+          // Average both channels to create mono signal
+          samples[i] = (leftSample + rightSample) / 2;
+        }
       }
 
       resolve({ samples, sampleRate });
@@ -1184,7 +1202,7 @@ function detectKeyFromSamples(samples: Float32Array, sampleRate: number): { key:
     }
   }
 
-  if (bestPeriod === 0 || maxCorrelation < 0.1) {
+  if (bestPeriod === 0) {
     return null;
   }
 
@@ -1200,8 +1218,8 @@ function detectKeyFromSamples(samples: Float32Array, sampleRate: number): { key:
   const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   const detectedNote = noteNames[note];
 
-  // Simple heuristic: if frequency is close to major third, assume major, else minor
-  // This is a simplified approach - real key detection is more complex
+  // Return the detected note even if correlation is low - better to show something than nothing
+  // The correlation threshold was too strict and prevented key detection for many audio files
   return {
     key: detectedNote,
     scale: "major", // Simplified - real detection would analyze harmonic content
@@ -1216,7 +1234,6 @@ export async function detectBPMAndKey({
 }): Promise<{
   bpm: number | null;
   key: string | null;
-  scale?: string;
 }> {
   let downloadedFilePath: string | null = null;
   let wavFilePath: string | null = null;
@@ -1237,13 +1254,18 @@ export async function detectBPMAndKey({
 
     // Detect key
     const keyResult = detectKeyFromSamples(samples, sampleRate);
-    const key = keyResult?.key || null;
-    const scale = keyResult?.scale;
+    // Combine key and scale into a single string like "C Major" or "A Minor"
+    const key = keyResult ? `${keyResult.key} ${keyResult.scale || "Major"}` : null;
+
+    console.log("[BPM/Key Detection] Results:", {
+      bpm,
+      key,
+      keyResult: keyResult ? { key: keyResult.key, scale: keyResult.scale } : null,
+    });
 
     return {
       bpm,
       key,
-      scale,
     };
   } catch (error) {
     console.error("[BPM/Key Detection] Error:", error);

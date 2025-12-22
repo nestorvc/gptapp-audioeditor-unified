@@ -34,7 +34,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./create-server.js";
-import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat } from "./services/audio.js";
+import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat, detectBPMAndKey } from "./services/audio.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const PORT = process.env.PORT || 8000;
@@ -332,6 +332,39 @@ async function handlePresignedUrl(req: Request, res: Response): Promise<void> {
 }
 
 app.post("/api/s3-presigned-url", express.json(), handlePresignedUrl);
+
+// handleDetectBPMKey - Handles BPM and Key detection request
+async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
+  const audioUrl = req.body.audioUrl;
+
+  if (!audioUrl) {
+    res.status(400).json({ error: "Missing audioUrl parameter" });
+    return;
+  }
+
+  try {
+    const result = await detectBPMAndKey({
+      audioUrl: audioUrl as string,
+    });
+
+    console.log("[BPM/Key Detection] Detected:", {
+      bpm: result.bpm,
+      key: result.key,
+      audioUrl,
+    });
+
+    res.json({
+      bpm: result.bpm,
+      key: result.key,
+    });
+  } catch (error) {
+    console.error("[BPM/Key Detection] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to detect BPM and key";
+    res.status(500).json({ error: errorMessage });
+  }
+}
+
+app.post("/api/detect-bpm-key", express.json(), handleDetectBPMKey);
 
 // Error handling middleware to ensure CORS headers are always sent (must be after all routes)
 app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
