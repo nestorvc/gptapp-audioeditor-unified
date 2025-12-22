@@ -160,13 +160,20 @@ body {
 .spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #ffffff;
+  border: 2px solid rgba(13, 13, 13, 0.2);
+  border-top-color: var(--text-primary);
   border-radius: 50%;
   display: inline-block;
   margin-right: 8px;
   animation: spinner-rotate 0.6s linear infinite;
   vertical-align: middle;
+}
+
+.extract-vocals-button .spinner {
+  margin-right: var(--space-3);
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
 }
 
 @keyframes spinner-rotate {
@@ -481,6 +488,21 @@ body {
   top: calc(12px + 140px);
 }
 
+/* Vocals mode pin positioning */
+.vocals-mode-start-pin {
+  /* Position pin at top of first waveform container */
+  /* 12px (section padding) + 40px (time markers) + ~60px (toggle container height/centering) */
+  /* Pin is 65px tall, so center it at the top edge of waveform */
+  top: calc(12px + 40px + 60px + 32.5px);
+}
+
+.vocals-mode-end-pin {
+  /* Position pin at bottom of second waveform container */
+  /* 12px (section padding) + 40px (time markers) + 60px (first track toggle) + 120px (first waveform) + 12px (gap) + 60px (second track toggle) + 120px (second waveform) */
+  /* Pin is 65px tall, so center it at the bottom edge of waveform */
+  top: calc(12px + 40px + 60px + 120px + var(--space-4) + 60px + 120px - 32.5px);
+}
+
 /* Ensure SVG pins are properly styled */
 .trim-pin svg {
   display: block;
@@ -546,9 +568,10 @@ body {
 
 .waveform-toggle-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
-  min-width: 100px;
+  gap: var(--space-2);
+  min-width: 60px;
 }
 
 .waveform-track-label {

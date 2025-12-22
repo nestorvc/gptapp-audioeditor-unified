@@ -1714,8 +1714,14 @@ export function AudioEditor() {
 
       // Update total duration to match vocals buffer (they should be the same)
       setTotalDuration(vocalsBuffer.duration);
+      
+      // Ensure loading state is cleared
+      setIsLoading(false);
 
-      debugLog("🎵 [EXTRACT VOCALS] Audio buffers loaded and waveforms generated");
+      debugLog("🎵 [EXTRACT VOCALS] Audio buffers loaded and waveforms generated", {
+        vocalsWaveformLength: vocalsWaveform.length,
+        musicWaveformLength: musicWaveform.length,
+      });
     } catch (error) {
       console.error("❌ [EXTRACT VOCALS] Failed to extract vocals:", error);
       const message =
@@ -2262,10 +2268,13 @@ export function AudioEditor() {
           }}
           disabled={isExtractingVocals || isVocalsMode || isLoading}
           aria-label="Extract vocals"
-          title={isVocalsMode ? "Vocals already extracted" : "Extract vocals"}
+          title={isVocalsMode ? "Vocals already extracted" : isExtractingVocals ? "Extracting..." : "Extract vocals"}
         >
           {isExtractingVocals ? (
-            <span className="loading-spinner">...</span>
+            <>
+              <span className="spinner" aria-hidden="true" />
+              <span className="extract-vocals-text">Extracting...</span>
+            </>
           ) : (
             <>
               <svg className="upload-replace-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -2345,37 +2354,76 @@ export function AudioEditor() {
             style={{ left: `${trimmerLinePosition}%` }}
           />
 
-        {/* Start pin - positioned at section level to align with trimmer line */}
-        <svg
-          className="trim-pin start-pin"
-          style={{ left: `${startPinPosition}%` }}
-          width="60"
-          height="65"
-          viewBox="0 0 60 65"
-          onMouseDown={(e) => handleTrimPinStart('start', e)}
-          onTouchStart={(e) => handleTrimPinStart('start', e)}
-        >
-          <path
-            d="M 0 30 A 30 30 0 0 1 60 30 L 30 65 Z"
-            fill="var(--blue)"
-          />
-        </svg>
+        {/* Waveform container(s) */}
+        {isVocalsMode ? (
+          <>
+            {/* Start pin - positioned at top of first waveform (points down) */}
+            <svg
+              className="trim-pin start-pin vocals-mode-start-pin"
+              style={{ left: `${startPinPosition}%` }}
+              width="60"
+              height="65"
+              viewBox="0 0 60 65"
+              onMouseDown={(e) => handleTrimPinStart('start', e)}
+              onTouchStart={(e) => handleTrimPinStart('start', e)}
+            >
+              <path
+                d="M 0 30 A 30 30 0 0 1 60 30 L 30 65 Z"
+                fill="var(--blue)"
+              />
+            </svg>
 
-        {/* End pin - positioned at section level to align with trimmer line */}
-        <svg
-          className="trim-pin end-pin"
-          style={{ left: `${endPinPosition}%` }}
-          width="60"
-          height="65"
-          viewBox="0 0 60 65"
-          onMouseDown={(e) => handleTrimPinStart('end', e)}
-          onTouchStart={(e) => handleTrimPinStart('end', e)}
-        >
-          <path
-            d="M 30 0 L 0 35 A 30 30 0 0 0 60 35 Z"
-            fill="var(--blue)"
-          />
-        </svg>
+            {/* End pin - positioned at bottom of second waveform (points up) */}
+            <svg
+              className="trim-pin end-pin vocals-mode-end-pin"
+              style={{ left: `${endPinPosition}%` }}
+              width="60"
+              height="65"
+              viewBox="0 0 60 65"
+              onMouseDown={(e) => handleTrimPinStart('end', e)}
+              onTouchStart={(e) => handleTrimPinStart('end', e)}
+            >
+              <path
+                d="M 30 0 L 0 35 A 30 30 0 0 0 60 35 Z"
+                fill="var(--blue)"
+              />
+            </svg>
+          </>
+        ) : (
+          <>
+            {/* Start pin - positioned at section level to align with trimmer line */}
+            <svg
+              className="trim-pin start-pin"
+              style={{ left: `${startPinPosition}%` }}
+              width="60"
+              height="65"
+              viewBox="0 0 60 65"
+              onMouseDown={(e) => handleTrimPinStart('start', e)}
+              onTouchStart={(e) => handleTrimPinStart('start', e)}
+            >
+              <path
+                d="M 0 30 A 30 30 0 0 1 60 30 L 30 65 Z"
+                fill="var(--blue)"
+              />
+            </svg>
+
+            {/* End pin - positioned at section level to align with trimmer line */}
+            <svg
+              className="trim-pin end-pin"
+              style={{ left: `${endPinPosition}%` }}
+              width="60"
+              height="65"
+              viewBox="0 0 60 65"
+              onMouseDown={(e) => handleTrimPinStart('end', e)}
+              onTouchStart={(e) => handleTrimPinStart('end', e)}
+            >
+              <path
+                d="M 30 0 L 0 35 A 30 30 0 0 0 60 35 Z"
+                fill="var(--blue)"
+              />
+            </svg>
+          </>
+        )}
 
         {/* Waveform container(s) */}
         {isVocalsMode ? (
@@ -2398,7 +2446,7 @@ export function AudioEditor() {
                 onMouseDown={handleWaveformStart}
                 onTouchStart={handleWaveformStart}
               >
-                {isLoading ? (
+                {isLoading || vocalsWaveformData.length === 0 ? (
                   <div className="waveform-loading">Loading audio...</div>
                 ) : (
                   <>
@@ -2455,7 +2503,7 @@ export function AudioEditor() {
                 onMouseDown={handleWaveformStart}
                 onTouchStart={handleWaveformStart}
               >
-                {isLoading ? (
+                {isLoading || musicWaveformData.length === 0 ? (
                   <div className="waveform-loading">Loading audio...</div>
                 ) : (
                   <>
