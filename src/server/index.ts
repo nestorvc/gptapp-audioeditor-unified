@@ -205,6 +205,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
   const fadeInDuration = req.body.fadeInDuration;
   const fadeOutEnabled = req.body.fadeOutEnabled;
   const fadeOutDuration = req.body.fadeOutDuration;
+  const sessionId = req.body.sessionId;
   const file = req.file;
 
   // Validate required parameters
@@ -274,7 +275,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
           fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
           processing_time_ms: Date.now() - processingStartTime,
           source: "api",
-        });
+        }, sessionId);
       } else if (vocalsEnabledBool && !musicEnabledBool) {
         // Only vocals enabled
         await trackEvent("fe_only_vocal_track_exported", {
@@ -284,7 +285,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
           fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
           processing_time_ms: Date.now() - processingStartTime,
           source: "api",
-        });
+        }, sessionId);
       } else if (!vocalsEnabledBool && musicEnabledBool) {
         // Only music enabled
         await trackEvent("fe_only_music_track_exported", {
@@ -294,7 +295,7 @@ async function handleAudioProcess(req: Request, res: Response): Promise<void> {
           fade_out_enabled: fadeOutEnabled === "true" || fadeOutEnabled === true,
           processing_time_ms: Date.now() - processingStartTime,
           source: "api",
-        });
+        }, sessionId);
       }
 
       res.json({
@@ -435,6 +436,7 @@ app.post("/api/s3-presigned-url", express.json(), handlePresignedUrl);
 // handleDetectBPMKey - Handles BPM and Key detection request
 async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
   const audioUrl = req.body.audioUrl;
+  const sessionId = req.body.sessionId;
 
   if (!audioUrl) {
     res.status(400).json({ error: "Missing audioUrl parameter" });
@@ -447,7 +449,7 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
   await trackEvent("fe_bpm_detection_started", {
     has_audio_url: !!audioUrl,
     source: "api",
-  });
+  }, sessionId);
 
   try {
     const result = await detectBPMAndKey({
@@ -465,7 +467,7 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
       key: result.key ?? null,
       processing_time_ms: Date.now() - startTime,
       source: "api",
-    });
+    }, sessionId);
 
     res.json({
       bpm: result.bpm,
@@ -480,7 +482,7 @@ async function handleDetectBPMKey(req: Request, res: Response): Promise<void> {
       error_message: errorMessage,
       processing_time_ms: Date.now() - startTime,
       source: "api",
-    });
+    }, sessionId);
     
     res.status(500).json({ error: errorMessage });
   }
@@ -492,6 +494,7 @@ app.post("/api/detect-bpm-key", express.json(), handleDetectBPMKey);
 async function handleExtractVocals(req: Request, res: Response): Promise<void> {
   const audioUrl = req.body.audioUrl;
   const trackName = req.body.trackName;
+  const sessionId = req.body.sessionId;
   const file = req.file;
 
   if (!audioUrl && !file) {
@@ -555,7 +558,7 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
       has_audio_url: !!audioUrl,
       has_track_name: !!trackName,
       source: "api",
-    });
+    }, sessionId);
 
     const result = await separateVoiceFromMusic({
       audioUrl: resultAudioUrl,
@@ -573,7 +576,7 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
       music_file_name: result.musicFileName,
       processing_time_ms: Date.now() - startTime,
       source: "api",
-    });
+    }, sessionId);
 
     res.json({
       vocalsUrl: result.vocalsUrl,
@@ -590,7 +593,7 @@ async function handleExtractVocals(req: Request, res: Response): Promise<void> {
       error_type: "extraction_failed",
       error_message: errorMessage,
       source: "api",
-    });
+    }, sessionId);
     
     res.status(500).json({ error: errorMessage });
   }

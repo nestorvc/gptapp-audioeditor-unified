@@ -190,6 +190,9 @@ export function trackEvent(eventName, parameters = {}) {
   debugLog('[Analytics] Event tracked:', eventName, eventParams);
 }
 
+// User visit tracking key (for first-time user detection)
+const USER_VISIT_KEY = 'ga4_user_visited';
+
 /**
  * Track widget opened event
  * @param {Object} options - Widget options
@@ -197,9 +200,26 @@ export function trackEvent(eventName, parameters = {}) {
  * @param {string} options.platform - Platform (ios/android/desktop)
  */
 export function trackWidgetOpened({ mode, platform }) {
+  const sessionId = getSessionId();
+  
+  // Check if this is the first time this user visits (across all sessions)
+  let isFirstTime = false;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    isFirstTime = !localStorage.getItem(USER_VISIT_KEY);
+    if (isFirstTime) {
+      localStorage.setItem(USER_VISIT_KEY, 'true');
+      // Track first-time user event
+      trackEvent('fe_user_first_visit', {
+        mode: mode || 'audio',
+        platform: platform || 'desktop',
+      });
+    }
+  }
+  
   trackEvent('fe_widget_opened', {
     mode: mode || 'audio',
     platform: platform || 'desktop',
+    is_first_time: isFirstTime,
   });
 }
 

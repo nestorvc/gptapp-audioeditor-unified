@@ -19,6 +19,7 @@ import {
   trackPlayback,
   trackFormatChanged,
   trackError,
+  getSessionId,
 } from "../../utils/analytics";
 
 // Debug utility - only logs if DEBUG is not 'false'
@@ -1397,6 +1398,7 @@ export function AudioEditor() {
         },
         body: JSON.stringify({
           audioUrl: detectionUrl,
+          sessionId: getSessionId(),
         }),
       });
 
@@ -1819,6 +1821,7 @@ export function AudioEditor() {
           body: JSON.stringify({
             audioUrl: s3Url,
             trackName: trackName || uploadedFileName || "audio-track",
+            sessionId: getSessionId(),
           }),
         });
       } else if (audioSource.url) {
@@ -1831,6 +1834,7 @@ export function AudioEditor() {
           body: JSON.stringify({
             audioUrl: audioSource.url,
             trackName: trackName || audioSource.name || "audio-track",
+            sessionId: getSessionId(),
           }),
         });
       } else {
@@ -2027,6 +2031,7 @@ export function AudioEditor() {
           params.append("fadeInDuration", fadeInTime.toString());
           params.append("fadeOutEnabled", String(fadeOutEnabled));
           params.append("fadeOutDuration", fadeOutTime.toString());
+          params.append("sessionId", getSessionId());
 
           response = await fetch(endpoint, {
             method: "POST",
@@ -2047,6 +2052,7 @@ export function AudioEditor() {
           params.append("fadeInDuration", fadeInTime.toString());
           params.append("fadeOutEnabled", String(fadeOutEnabled));
           params.append("fadeOutDuration", fadeOutTime.toString());
+          params.append("sessionId", getSessionId());
 
           response = await fetch(endpoint, {
             method: "POST",
@@ -2073,6 +2079,7 @@ export function AudioEditor() {
         params.append("fadeInDuration", fadeInTime.toString());
         params.append("fadeOutEnabled", String(fadeOutEnabled));
         params.append("fadeOutDuration", fadeOutTime.toString());
+        params.append("sessionId", getSessionId());
 
         response = await fetch(endpoint, {
           method: "POST",
@@ -2136,6 +2143,7 @@ export function AudioEditor() {
         params.append("fadeInDuration", fadeInTime.toString());
         params.append("fadeOutEnabled", String(fadeOutEnabled));
         params.append("fadeOutDuration", fadeOutTime.toString());
+        params.append("sessionId", getSessionId());
 
         response = await fetch(endpoint, {
           method: "POST",
@@ -2156,6 +2164,7 @@ export function AudioEditor() {
         params.append("fadeInDuration", fadeInTime.toString());
         params.append("fadeOutEnabled", String(fadeOutEnabled));
         params.append("fadeOutDuration", fadeOutTime.toString());
+        params.append("sessionId", getSessionId());
 
         response = await fetch(endpoint, {
           method: "POST",
@@ -2214,16 +2223,16 @@ export function AudioEditor() {
       setWidgetState({ exportedUrl: resolvedDownloadUrl });
 
       // Notify ChatGPT about the download link
-      try {
-        await callTool("audio.notify_download_link_ready", {
-          downloadUrl: resolvedDownloadUrl,
-          fileName: exportedFileName,
-          format: outputFormat,
-        });
-        debugLog("✅ [MCP TOOL] Notified ChatGPT about audio download link");
-      } catch (toolError) {
-        debugWarn("⚠️ [MCP TOOL] Failed to notify ChatGPT about download link:", toolError);
-      }
+      // try {
+      //   await callTool("audio.notify_download_link_ready", {
+      //     downloadUrl: resolvedDownloadUrl,
+      //     fileName: exportedFileName,
+      //     format: outputFormat,
+      //   });
+      //   debugLog("✅ [MCP TOOL] Notified ChatGPT about audio download link");
+      // } catch (toolError) {
+      //   debugWarn("⚠️ [MCP TOOL] Failed to notify ChatGPT about download link:", toolError);
+      // }
 
       // Track successful export event
       trackAudioExported({

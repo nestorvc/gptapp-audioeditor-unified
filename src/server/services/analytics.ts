@@ -8,7 +8,7 @@
  * Only metadata and user actions are logged.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 
 const GA4_MEASUREMENT_ID = process.env.GOOGLE_ANALYTICS_ID;
 const GA4_API_SECRET = process.env.GOOGLE_ANALYTICS_API_SECRET; // Optional, for enhanced measurement
@@ -29,12 +29,13 @@ if (GA4_MEASUREMENT_ID) {
 }
 
 // In-memory client ID storage (for server-side tracking)
-// In production, consider using Redis or a database for persistence
+// Cache is used for performance, but client IDs are deterministic based on sessionId
 const clientIdCache = new Map<string, string>();
 
 /**
- * Generate a persistent client ID for GA4
+ * Generate a random client ID for GA4
  * Format: {timestamp}.{random}
+ * Used when no sessionId is available
  */
 function generateClientId(): string {
   const timestamp = Date.now();
@@ -43,15 +44,41 @@ function generateClientId(): string {
 }
 
 /**
+ * Generate a stable client ID from sessionId
+ * This ensures the same sessionId always gets the same clientId,
+ * even after server restarts, improving unique user tracking accuracy.
+ * Format: {timestamp}.{hash}
+ */
+function generateStableClientId(sessionId: string): string {
+  // Extract timestamp from sessionId if available (for better GA4 compatibility)
+  // Session IDs typically have format: chatgpt_session_{timestamp}_{random}
+  // or: openai/widgetSessionId (which is a UUID)
+  const timestampMatch = sessionId.match(/\d{10,13}/);
+  const baseTimestamp = timestampMatch ? timestampMatch[0].substring(0, 13) : Date.now().toString();
+  
+  // Create a deterministic hash from sessionId
+  const hash = createHash('sha256').update(sessionId).digest('hex');
+  // Use first 10 characters of hash for uniqueness
+  const hashSuffix = hash.substring(0, 10);
+  
+  // Format: {timestamp}.{hash} - matches GA4 client_id format
+  return `${baseTimestamp}.${hashSuffix}`;
+}
+
+/**
  * Get or generate a client ID for a session
+ * Uses stable client ID generation to ensure same sessionId = same clientId
+ * even after server restarts, improving unique user tracking accuracy.
  */
 function getClientId(sessionId: string): string {
   if (!sessionId) {
     return generateClientId();
   }
   
+  // Check cache first (for performance)
   if (!clientIdCache.has(sessionId)) {
-    clientIdCache.set(sessionId, generateClientId());
+    // Generate stable client ID that persists across server restarts
+    clientIdCache.set(sessionId, generateStableClientId(sessionId));
   }
   
   return clientIdCache.get(sessionId)!;
