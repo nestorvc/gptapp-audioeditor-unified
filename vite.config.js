@@ -11,11 +11,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist/widgets'),
     emptyOutDir: true,
-    cssCodeSplit: true,
     rollupOptions: {
       input: {
         'audio-editor': path.resolve(__dirname, 'src/widgets/components/audio-editor/index.jsx'),
-        'upload-component': path.resolve(__dirname, 'src/widgets/components/upload-component/index.jsx'),
       },
       output: {
         entryFileNames: '[name].js',
