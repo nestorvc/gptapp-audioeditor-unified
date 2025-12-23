@@ -35,7 +35,7 @@ console.log("process.env.AWS_REGION", process.env.AWS_REGION);
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import ffmpeg from "fluent-ffmpeg";
-import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -1501,4 +1501,87 @@ export async function detectBPMAndKey({
       })
     );
   }
+}
+
+// cleanupOldS3Files - Deletes files from S3 uploads and exports folders older than 24 hours
+export async function cleanupOldS3Files(): Promise<{
+  deletedCount: number;
+  errors: number;
+}> {
+  if (!s3Client || !s3Bucket) {
+    throw new Error("S3 configuration is missing on the server.");
+  }
+
+  const now = Date.now();
+  const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  let deletedCount = 0;
+  let errors = 0;
+
+  const foldersToClean = [s3UploadsFolder, s3ExportsFolder].filter((f): f is string => Boolean(f));
+
+  if (foldersToClean.length === 0) {
+    console.log("[S3 Cleanup] No folders configured for cleanup (S3_UPLOADS_FOLDER and S3_EXPORTS_FOLDER)");
+    return { deletedCount: 0, errors: 0 };
+  }
+
+  for (const folder of foldersToClean) {
+    const keyPrefixNormalized = folder.replace(/^\/*/, "").replace(/\/*$/, "");
+    const prefix = keyPrefixNormalized ? `${keyPrefixNormalized}/` : "";
+
+    try {
+      let continuationToken: string | undefined;
+      
+      do {
+        const listCommand = new ListObjectsV2Command({
+          Bucket: s3Bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        });
+
+        const listResponse = await s3Client.send(listCommand);
+        const objectsToDelete: Array<{ Key: string }> = [];
+
+        if (listResponse.Contents) {
+          for (const object of listResponse.Contents) {
+            if (object.Key && object.LastModified) {
+              const lastModified = object.LastModified.getTime();
+              if (lastModified < twentyFourHoursAgo) {
+                objectsToDelete.push({ Key: object.Key });
+              }
+            }
+          }
+        }
+
+        if (objectsToDelete.length > 0) {
+          // Delete in batches of 1000 (S3 limit)
+          for (let i = 0; i < objectsToDelete.length; i += 1000) {
+            const batch = objectsToDelete.slice(i, i + 1000);
+            try {
+              const deleteCommand = new DeleteObjectsCommand({
+                Bucket: s3Bucket,
+                Delete: {
+                  Objects: batch,
+                  Quiet: true,
+                },
+              });
+              await s3Client.send(deleteCommand);
+              deletedCount += batch.length;
+              console.log(`[S3 Cleanup] Deleted ${batch.length} files from ${folder}`);
+            } catch (error) {
+              console.warn(`[S3 Cleanup] Failed to delete batch from ${folder}:`, error);
+              errors += batch.length;
+            }
+          }
+        }
+
+        continuationToken = listResponse.NextContinuationToken;
+      } while (continuationToken);
+    } catch (error) {
+      console.error(`[S3 Cleanup] Error listing objects in ${folder}:`, error);
+      errors++;
+    }
+  }
+
+  console.log(`[S3 Cleanup] Completed: ${deletedCount} files deleted, ${errors} errors`);
+  return { deletedCount, errors };
 }
