@@ -83,12 +83,25 @@ function loadWidgetHtml(componentName: string): string {
   }
   const js = fs.readFileSync(jsPath, "utf8");
 
+  // Try to load component-specific CSS, fallback to shared audio-widgets.css
   const cssPath = path.join(ASSETS_DIR, `${componentName}.css`);
   const css = (() => {
     try {
       return fs.readFileSync(cssPath, "utf8");
     } catch {
-      return "";
+      // Fallback to shared audio-widgets.css for components that share the same styles
+      try {
+        const sharedCssPath = path.join(ASSETS_DIR, "audio-widgets.css");
+        return fs.readFileSync(sharedCssPath, "utf8");
+      } catch {
+        // Final fallback to audio-editor.css (for backwards compatibility)
+        try {
+          const fallbackCssPath = path.join(ASSETS_DIR, "audio-editor.css");
+          return fs.readFileSync(fallbackCssPath, "utf8");
+        } catch {
+          return "";
+        }
+      }
     }
   })();
 
@@ -119,6 +132,7 @@ export const createServer = () => {
   });
 
   const audioEditorUri = "ui://widget/audio-editor.html";
+  const uploadComponentUri = "ui://widget/upload-component.html";
   
   // Build S3 domain patterns - CSP doesn't support wildcards in the middle (e.g., *.s3.*.amazonaws.com)
   // So we need to construct specific patterns based on bucket name and region
@@ -195,14 +209,37 @@ export const createServer = () => {
     }),
   );
 
+  /* Upload Component */
+  server.registerResource(
+    "upload-component-widget",
+    uploadComponentUri,
+    {},
+    async () => ({
+      contents: [
+        {
+          uri: uploadComponentUri,
+          mimeType: "text/html+skybridge",
+          text: loadWidgetHtml("upload-component"),
+          _meta: {
+            "openai/widgetDescription":
+              "Upload an audio file to edit.",
+            "openai/widgetPrefersBorder": true,
+            "openai/widgetDomain": "https://chatgpt.com",
+            "openai/widgetCSP": cspMeta,
+          },
+        },
+      ],
+    }),
+  );
+
   /* ----------------------------- MCP TOOLS ----------------------------- */
-  /* Audio Editor */
+  /* Audio Editor - With File (opens AudioEditor directly) */
   server.registerTool(
-    "audio.open_audio_editor",
+    "audio.open_audio_editor_with_file",
     {
-      title: "Open Audio Editor",
+      title: "Open Audio Editor with File",
       description:
-        "Use this when the user wants to trim, cut, fade, preview, or enhance an audio file and export it to formats like MP3, WAV, FLAC, OGG, or M4A.",
+        "Use this when the user wants to edit an audio file and has provided an audioFile attachment or audioUrl. Opens the audio editor directly with the file.",
       inputSchema: {
         audioFile: z
           .object({
@@ -210,12 +247,12 @@ export const createServer = () => {
             file_id: z.string(),
           })
           .optional()
-          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
+          .describe("Audio file uploaded by the user in the chat."),
         audioUrl: z
           .string()
           .url()
           .optional()
-          .describe("Optional public HTTPS URL to an audio file. Use this when the user provides a direct link to an audio file."),
+          .describe("Public HTTPS URL to an audio file."),
       },
       _meta: {
         "openai/outputTemplate": audioEditorUri,
@@ -238,20 +275,22 @@ export const createServer = () => {
             .string()
             .url()
             .optional()
-            .describe("Optional public HTTPS URL to an audio file."),
+            .describe("Public HTTPS URL to an audio file."),
         })
         .parse(rawParams);
 
       // Priority: provided audioUrl > audioFile download_url
       const audioUrl = providedAudioUrl ?? audioFile?.download_url ?? null;
 
+      if (!audioUrl) {
+        throw new Error("audioFile or audioUrl must be provided");
+      }
+
       return {
         content: [
           {
             type: "text",
-            text: audioUrl
-              ? "Audio editor is ready with your audio file! Trim sections, tweak fades, and export to your favorite format."
-              : "Audio editor is ready! Trim sections, tweak fades, and export to your favorite format.",
+            text: "Audio editor is ready with your audio file! Trim sections, tweak fades, and export to your favorite format.",
           },
         ],
         structuredContent: {
@@ -267,13 +306,43 @@ export const createServer = () => {
     },
   );
 
-  /* Ringtone Editor */
+  /* Audio Editor - Without File (opens UploadComponent first) */
   server.registerTool(
-    "audio.open_ringtone_editor",
+    "audio.open_audio_editor_without_file",
     {
-      title: "Open Ringtone Editor",
+      title: "Open Audio Editor Upload",
       description:
-        "Use this when the user wants to create or edit a ringtone by trimming an audio file, adjusting fades, and exporting it.",
+        "Use this when the user wants to edit an audio file but hasn't provided one yet. Opens the upload component first.",
+      inputSchema: {},
+      _meta: {
+        "openai/outputTemplate": uploadComponentUri,
+        "openai/toolInvocation/invoking": "Opening audio upload",
+        "openai/toolInvocation/invoked": "Audio upload displayed",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Upload an audio file to get started! Drag and drop or select a file to begin editing.",
+          },
+        ],
+        structuredContent: {
+          message: "Upload component ready",
+        },
+      };
+    },
+  );
+
+  /* Ringtone Editor - With File (opens AudioEditor directly) */
+  server.registerTool(
+    "audio.open_ringtone_editor_with_file",
+    {
+      title: "Open Ringtone Editor with File",
+      description:
+        "Use this when the user wants to create or edit a ringtone and has provided an audioFile attachment or audioUrl. Opens the ringtone editor directly with the file.",
       inputSchema: {
         audioFile: z
           .object({
@@ -281,12 +350,12 @@ export const createServer = () => {
             file_id: z.string(),
           })
           .optional()
-          .describe("Optional audio file uploaded by the user in the chat. Use this when the user attaches an audio file."),
+          .describe("Audio file uploaded by the user in the chat."),
         audioUrl: z
           .string()
           .url()
           .optional()
-          .describe("Optional public HTTPS URL to an audio file. Use this when the user provides a direct link to an audio file."),
+          .describe("Public HTTPS URL to an audio file."),
       },
       _meta: {
         "openai/outputTemplate": audioEditorUri,
@@ -309,14 +378,18 @@ export const createServer = () => {
             .string()
             .url()
             .optional()
-            .describe("Optional public HTTPS URL to an audio file."),
+            .describe("Public HTTPS URL to an audio file."),
         })
         .parse(rawParams);
 
       // Priority: provided audioUrl > audioFile download_url
       const audioUrl = providedAudioUrl ?? audioFile?.download_url ?? null;
 
-      await trackMCPTool("audio.open_ringtone_editor", {
+      if (!audioUrl) {
+        throw new Error("audioFile or audioUrl must be provided");
+      }
+
+      await trackMCPTool("audio.open_ringtone_editor_with_file", {
         has_audio_file: !!audioFile,
         has_audio_url: !!audioUrl,
         mode: "ringtone",
@@ -326,9 +399,7 @@ export const createServer = () => {
         content: [
           {
             type: "text",
-            text: audioUrl
-              ? "Ringtone editor is ready with your audio file! Trim your audio and export it as a ringtone."
-              : "Ringtone editor is ready! Trim your audio and export it as a ringtone.",
+            text: "Ringtone editor is ready with your audio file! Trim your audio and export it as a ringtone.",
           },
         ],
         structuredContent: {
@@ -340,6 +411,37 @@ export const createServer = () => {
         },
         _meta: {
           hasAudioUrl: !!audioUrl,
+        },
+      };
+    },
+  );
+
+  /* Ringtone Editor - Without File (opens UploadComponent first) */
+  server.registerTool(
+    "audio.open_ringtone_editor_without_file",
+    {
+      title: "Open Ringtone Editor Upload",
+      description:
+        "Use this when the user wants to create or edit a ringtone but hasn't provided an audio file yet. Opens the upload component first.",
+      inputSchema: {},
+      _meta: {
+        "openai/outputTemplate": uploadComponentUri,
+        "openai/toolInvocation/invoking": "Opening ringtone upload",
+        "openai/toolInvocation/invoked": "Ringtone upload displayed",
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Upload an audio file to create your ringtone! Drag and drop or select a file to begin editing.",
+          },
+        ],
+        structuredContent: {
+          message: "Upload component ready",
+          mode: "ringtone",
         },
       };
     },

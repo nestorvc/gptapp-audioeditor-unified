@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import "./audio-editor.css";
+import "../../styles/audio-widgets.css";
 import { useToolOutput, useSendFollowUpMessage, useOpenAIGlobals } from "../../hooks/useOpenAI";
 import {
   trackWidgetOpened,
@@ -380,8 +380,6 @@ export function AudioEditor() {
   const [generationSuccess, setGenerationSuccess] = useState("");
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [isCheckingAudioSource, setIsCheckingAudioSource] = useState(true);
   const sendFollowUpMessage = useSendFollowUpMessage();
   // Vocal extraction state
   const [isExtractingVocals, setIsExtractingVocals] = useState(false);
@@ -434,49 +432,6 @@ export function AudioEditor() {
     }
   }, [toolOutput?.defaultFormat, toolOutput?.mode, openAIGlobals.userAgent, isRingtoneMode, platform]);
 
-  // Check if audioSource is available - wait for toolOutput to be determined
-  useEffect(() => {
-    // If we have an uploaded file, we have an audio source - stop checking
-    if (uploadedAudioUrl) {
-      setIsCheckingAudioSource(false);
-      return;
-    }
-    
-    // If toolOutput has an audioUrl (and it's not a ChatGPT conversation path), we have an audio source
-    const isChatPath = toolOutput?.audioUrl && typeof toolOutput.audioUrl === 'string' && toolOutput.audioUrl.includes('/mnt/data/');
-    if (toolOutput?.audioUrl && !isChatPath) {
-      setIsCheckingAudioSource(false);
-      return;
-    }
-    
-    // If toolOutput exists but has no audioUrl, we know there's no audio source
-    // (toolOutput might be an empty object or have other properties but no audioUrl)
-    if (toolOutput !== null && toolOutput !== undefined && !toolOutput?.audioUrl) {
-      setIsCheckingAudioSource(false);
-      return;
-    }
-    
-    // If window.openai is not available yet, wait a bit for it to initialize
-    // Give it up to 2 seconds to receive toolOutput
-    if (typeof window === 'undefined' || !window.openai) {
-      const timer = setTimeout(() => {
-        setIsCheckingAudioSource(false);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-    
-    // If window.openai exists but toolOutput is still null/undefined,
-    // wait a bit more for the openai:set_globals event (up to 2 seconds)
-    if (toolOutput === null || toolOutput === undefined) {
-      const timer = setTimeout(() => {
-        setIsCheckingAudioSource(false);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-    
-    // If we get here, toolOutput exists but has no audioUrl, so no audio source
-    setIsCheckingAudioSource(false);
-  }, [toolOutput, uploadedAudioUrl]);
 
   useEffect(() => {
     // Log only serializable properties to avoid DataCloneError
@@ -2215,10 +2170,26 @@ export function AudioEditor() {
       });
 
       try {
-        await sendFollowUpMessage(
-          `Audio generated successfully! Download it here: ${resolvedDownloadUrl}`
-        );
-        debugLog("💬 [FOLLOW UP MESSAGE] Sent follow-up message with S3 download URL.");
+        let message = `Audio generated successfully! Download it here: ${resolvedDownloadUrl}`;
+        
+        // Include BPM and key data if available
+        const metadataParts = [];
+        if (bpm !== null && bpm !== undefined) {
+          metadataParts.push(`BPM: ${bpm}`);
+        }
+        if (key) {
+          metadataParts.push(`Key: ${key}`);
+        }
+        
+        if (metadataParts.length > 0) {
+          message += `\n\n${metadataParts.join('\n')}`;
+        }
+        
+        await sendFollowUpMessage(message);
+        debugLog("💬 [FOLLOW UP MESSAGE] Sent follow-up message with S3 download URL.", {
+          hasBpm: bpm !== null && bpm !== undefined,
+          hasKey: !!key,
+        });
       } catch (messageError) {
         debugWarn("⚠️ [FOLLOW UP MESSAGE] Failed to send follow-up message:", messageError);
       }
@@ -2404,108 +2375,22 @@ export function AudioEditor() {
 
   const audioSource = getAudioSource();
 
-  // Show loading screen while checking for audio source
-  if (isCheckingAudioSource) {
+  // AudioEditor should only be opened when audioFile/audioUrl is provided
+  // If no audio source, show error message
+  if (!audioSource) {
     return (
       <div className="ringtone-editor">
         <div className="ringtone-header">
           <div className="upload-title-container">            
-            <svg className="upload-title-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 5C8.55228 5 9 5.44772 9 6V18C9 18.5523 8.55228 19 8 19C7.44772 19 7 18.5523 7 18V6C7 5.44772 7.44772 5 8 5ZM16 7C16.5523 7 17 7.44772 17 8V16C17 16.5523 16.5523 17 16 17C15.4477 17 15 16.5523 15 16V8C15 7.44772 15.4477 7 16 7ZM12 8.5C12.5523 8.5 13 8.94772 13 9.5V14.5C13 15.0523 12.5523 15.5 12 15.5C11.4477 15.5 11 15.0523 11 14.5V9.5C11 8.94772 11.4477 8.5 12 8.5ZM4 9.5C4.55228 9.5 5 9.94772 5 10.5V13.5C5 14.0523 4.55228 14.5 4 14.5C3.44772 14.5 3 14.0523 3 13.5V10.5C3 9.94772 3.44772 9.5 4 9.5ZM20 9.5C20.5523 9.5 21 9.94772 21 10.5V13.5C21 14.0523 20.5523 14.5 20 14.5C19.4477 14.5 19 14.0523 19 13.5V10.5C19 9.94772 19.4477 9.5 20 9.5Z" fill="currentColor"/>
-            </svg>
-            <h2 className="upload-title">Upload Audio File</h2>
+            <h2 className="upload-title">Audio Editor</h2>
           </div>
         </div>
         <div className="waveform-container">
           <div className="upload-area">
-            <span className="spinner" aria-hidden="true" />
-            <p className="upload-description">Loading</p>
-          </div>
-        </div>
-
-        {/* Submit Container - Skeleton (no button) */}
-        <div className="submit-container">
-        </div>
-      </div>
-    );
-  }
-
-  // Show upload UI if no audio source is available
-  if (!audioSource) {
-    return (
-      <div className="ringtone-editor">
-        {/* Header */}
-        <div className="ringtone-header">
-          <div className="upload-title-container">            
-            <svg className="upload-title-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 5C8.55228 5 9 5.44772 9 6V18C9 18.5523 8.55228 19 8 19C7.44772 19 7 18.5523 7 18V6C7 5.44772 7.44772 5 8 5ZM16 7C16.5523 7 17 7.44772 17 8V16C17 16.5523 16.5523 17 16 17C15.4477 17 15 16.5523 15 16V8C15 7.44772 15.4477 7 16 7ZM12 8.5C12.5523 8.5 13 8.94772 13 9.5V14.5C13 15.0523 12.5523 15.5 12 15.5C11.4477 15.5 11 15.0523 11 14.5V9.5C11 8.94772 11.4477 8.5 12 8.5ZM4 9.5C4.55228 9.5 5 9.94772 5 10.5V13.5C5 14.0523 4.55228 14.5 4 14.5C3.44772 14.5 3 14.0523 3 13.5V10.5C3 9.94772 3.44772 9.5 4 9.5ZM20 9.5C20.5523 9.5 21 9.94772 21 10.5V13.5C21 14.0523 20.5523 14.5 20 14.5C19.4477 14.5 19 14.0523 19 13.5V10.5C19 9.94772 19.4477 9.5 20 9.5Z" fill="currentColor"/>
-            </svg>
-            <h2 className="upload-title">Upload Audio File</h2>
-          </div>
-        </div>
-        
-        {/* Waveform Section - Upload UI */}
-        <div className="waveform-container">
-          <input
-            ref={fileInputRef}
-            id="audio-file-input"
-            type="file"
-            accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm"
-            onChange={handleFileUpload}
-            style={{ display: 'none' }}
-            aria-label="Upload audio file or Drag-n-drop here"
-          />
-          <div 
-            className={`upload-area ${isDraggingOver ? 'drag-over' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={(e) => {
-              e.preventDefault();
-              if (fileInputRef.current) {
-                fileInputRef.current.click();
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                if (fileInputRef.current) {
-                  fileInputRef.current.click();
-                }
-              }
-            }}
-          >            
-            <p className="upload-description">
-              {isDraggingOver ? 'Drop your audio file here' : (
-                <>
-                  <b>Drag-n-drop</b> or <b>choose an audio file</b> to edit
-                </>
-              )}
+            <p className="upload-description" style={{ color: 'var(--error-color, #ef4444)' }}>
+              No audio file provided. Please use the upload component first.
             </p>
-            <p className="upload-hint">Supports MP3, WAV, M4A, AAC, OGG, and WebM</p>
-            {uploadError && (
-              <div className="upload-error" role="alert">
-                {uploadError}
-              </div>
-            )}
           </div>
-        </div>
-
-        {/* Submit Container - Upload Button */}
-        <div className="submit-container">
-          <button 
-            className="generate-button"
-            onClick={(e) => {
-              e.preventDefault();
-              if (fileInputRef.current) {
-                fileInputRef.current.click();
-              }
-            }}
-          >
-            Select File or Drag-n-drop
-          </button>
         </div>
       </div>
     );

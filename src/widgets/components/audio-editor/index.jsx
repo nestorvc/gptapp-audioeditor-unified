@@ -9,6 +9,7 @@
  */
 
 import { createRoot } from "react-dom/client";
+import "../../styles/audio-widgets.css";
 import AudioEditor from "./audio-editor";
 
 createRoot(document.getElementById("audio-editor-root")).render(<AudioEditor />);
