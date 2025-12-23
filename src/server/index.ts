@@ -34,7 +34,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./create-server.js";
-import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat, detectBPMAndKey, separateVoiceFromMusic, processDualTrackAudio, cleanupOldS3Files } from "./services/audio.js";
+import { finalizeLocalAudioExport, processAudioFromUrl, processAudioFromFile, generatePresignedUploadUrl, normalizeAudioExportFormat, detectBPMAndKey, separateVoiceFromMusic, processDualTrackAudio } from "./services/audio.js";
 import { trackWidgetEvent, trackEvent } from "./services/analytics.js";
 
 /* ----------------------------- CONSTANTS ----------------------------- */
@@ -629,24 +629,6 @@ async function handleAnalyticsTrack(req: Request, res: Response): Promise<void> 
 
 app.post("/api/analytics/track", express.json(), handleAnalyticsTrack);
 
-// handleCleanupS3 - Handles manual S3 cleanup request
-async function handleCleanupS3(req: Request, res: Response): Promise<void> {
-  try {
-    const result = await cleanupOldS3Files();
-    res.json({
-      success: true,
-      deletedCount: result.deletedCount,
-      errors: result.errors,
-    });
-  } catch (error) {
-    console.error("[S3 Cleanup] Error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to cleanup S3 files";
-    res.status(500).json({ error: errorMessage });
-  }
-}
-
-app.post("/api/s3-cleanup", handleCleanupS3);
-
 // Error handling middleware to ensure CORS headers are always sent (must be after all routes)
 app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
   // Set CORS headers manually even on errors
@@ -721,23 +703,7 @@ setupServer()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`MCP Streamable HTTP Server listening on port ${PORT}`);
-      
-      // Schedule automatic S3 cleanup (runs every hour by default, configurable via env)
-      const cleanupIntervalHours = parseInt(process.env.S3_CLEANUP_INTERVAL_HOURS || "1", 10);
-      const cleanupIntervalMs = cleanupIntervalHours * 60 * 60 * 1000;
-      
-      // Run cleanup immediately on startup, then schedule periodic cleanup
-      cleanupOldS3Files().catch((error) => {
-        console.error("[S3 Cleanup] Initial cleanup failed:", error);
-      });
-      
-      setInterval(() => {
-        cleanupOldS3Files().catch((error) => {
-          console.error("[S3 Cleanup] Scheduled cleanup failed:", error);
-        });
-      }, cleanupIntervalMs);
-      
-      console.log(`[S3 Cleanup] Scheduled automatic cleanup every ${cleanupIntervalHours} hour(s)`);
+      // Note: S3 file cleanup is handled by AWS S3 Lifecycle Rules (configured in AWS Console)
     });
   })
   .catch((error) => {
