@@ -37,6 +37,16 @@ const debugLog = (...args) => {
     console.log(...args);
   }
 };
+const debugWarn = (...args) => {
+  if (DEBUG) {
+    console.warn(...args);
+  }
+};
+const debugError = (...args) => {
+  if (DEBUG) {
+    console.error(...args);
+  }
+};
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -371,6 +381,7 @@ export function AudioEditor() {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isCheckingAudioSource, setIsCheckingAudioSource] = useState(true);
   const sendFollowUpMessage = useSendFollowUpMessage();
   // Vocal extraction state
   const [isExtractingVocals, setIsExtractingVocals] = useState(false);
@@ -422,6 +433,50 @@ export function AudioEditor() {
       }
     }
   }, [toolOutput?.defaultFormat, toolOutput?.mode, openAIGlobals.userAgent, isRingtoneMode, platform]);
+
+  // Check if audioSource is available - wait for toolOutput to be determined
+  useEffect(() => {
+    // If we have an uploaded file, we have an audio source - stop checking
+    if (uploadedAudioUrl) {
+      setIsCheckingAudioSource(false);
+      return;
+    }
+    
+    // If toolOutput has an audioUrl (and it's not a ChatGPT conversation path), we have an audio source
+    const isChatPath = toolOutput?.audioUrl && typeof toolOutput.audioUrl === 'string' && toolOutput.audioUrl.includes('/mnt/data/');
+    if (toolOutput?.audioUrl && !isChatPath) {
+      setIsCheckingAudioSource(false);
+      return;
+    }
+    
+    // If toolOutput exists but has no audioUrl, we know there's no audio source
+    // (toolOutput might be an empty object or have other properties but no audioUrl)
+    if (toolOutput !== null && toolOutput !== undefined && !toolOutput?.audioUrl) {
+      setIsCheckingAudioSource(false);
+      return;
+    }
+    
+    // If window.openai is not available yet, wait a bit for it to initialize
+    // Give it up to 2 seconds to receive toolOutput
+    if (typeof window === 'undefined' || !window.openai) {
+      const timer = setTimeout(() => {
+        setIsCheckingAudioSource(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+    
+    // If window.openai exists but toolOutput is still null/undefined,
+    // wait a bit more for the openai:set_globals event (up to 2 seconds)
+    if (toolOutput === null || toolOutput === undefined) {
+      const timer = setTimeout(() => {
+        setIsCheckingAudioSource(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+    
+    // If we get here, toolOutput exists but has no audioUrl, so no audio source
+    setIsCheckingAudioSource(false);
+  }, [toolOutput, uploadedAudioUrl]);
 
   useEffect(() => {
     // Log only serializable properties to avoid DataCloneError
@@ -534,7 +589,7 @@ export function AudioEditor() {
     
     // Sample rate last
     if (audioSampleRate > 0) {
-      parts.push(`Sample Rate: ${formatSampleRate(audioSampleRate)}`);
+      parts.push(`S.R.: ${formatSampleRate(audioSampleRate)}`);
     }
     
     return parts.join(" • ");
@@ -819,7 +874,7 @@ export function AudioEditor() {
 
   useEffect(() => {
     if (toolOutput?.audioUrl && isChatConversationFileUrl(toolOutput.audioUrl)) {
-      console.warn('⚠️ [FILE SOURCE] Detected unsupported ChatGPT conversation path. Prompting user to upload via widget.', {
+      debugWarn('⚠️ [FILE SOURCE] Detected unsupported ChatGPT conversation path. Prompting user to upload via widget.', {
         audioUrl: toolOutput.audioUrl,
       });
       setUploadError("Files added via the ChatGPT conversation aren’t accessible here. Please upload the audio using the Select File button below.");
@@ -852,12 +907,12 @@ export function AudioEditor() {
     musicBufferRef.current = null;
 
     if (!file) {
-      console.warn('⚠️ [FILE UPLOAD] No file provided');
+      debugWarn('⚠️ [FILE UPLOAD] No file provided');
       return;
     }
 
     if (typeof file.path === 'string' && file.path.includes('/mnt/data/')) {
-      console.warn('⚠️ [FILE UPLOAD] File path indicates ChatGPT conversation storage. Rejecting upload.', {
+      debugWarn('⚠️ [FILE UPLOAD] File path indicates ChatGPT conversation storage. Rejecting upload.', {
         filePath: file.path
       });
       setUploadError("Files attached in the ChatGPT chat can't be loaded. Please choose the audio file using this uploader.");
@@ -885,7 +940,7 @@ export function AudioEditor() {
     });
     
     if (!validAudioTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
-      console.error('❌ [FILE UPLOAD] Invalid file type:', {
+      debugError('❌ [FILE UPLOAD] Invalid file type:', {
         fileType: file.type,
         fileExtension,
         validTypes: validAudioTypes,
@@ -929,7 +984,7 @@ export function AudioEditor() {
   const handleFileUpload = (event) => {
     const inputPath = event?.target?.value ?? "";
     if (typeof inputPath === 'string' && inputPath.includes('/mnt/data/')) {
-      console.warn('⚠️ [FILE UPLOAD] File selected from ChatGPT conversation path. Rejecting to keep upload screen.', {
+      debugWarn('⚠️ [FILE UPLOAD] File selected from ChatGPT conversation path. Rejecting to keep upload screen.', {
         inputPath
       });
       setUploadError("Looks like that file was attached in the ChatGPT chat. Please upload the audio directly through this screen.");
@@ -1241,7 +1296,7 @@ export function AudioEditor() {
         // Detect BPM and Key after audio loads successfully
         detectBPMAndKey(audioSource);
       } catch (error) {
-        console.error("❌ [AUDIO LOAD] Error loading audio:", {
+        debugError("❌ [AUDIO LOAD] Error loading audio:", {
           error: error.message,
           stack: error.stack,
           name: error.name,
@@ -1614,7 +1669,7 @@ export function AudioEditor() {
           updatePosition();
         }
       } catch (error) {
-        console.error("Error playing audio:", error);
+        debugError("Error playing audio:", error);
         setIsPlaying(false);
         cleanup();
       }
@@ -1840,7 +1895,7 @@ export function AudioEditor() {
         musicWaveformLength: musicWaveform.length,
       });
     } catch (error) {
-      console.error("❌ [EXTRACT VOCALS] Failed to extract vocals:", error);
+      debugError("❌ [EXTRACT VOCALS] Failed to extract vocals:", error);
       const message =
         error?.message && typeof error.message === "string"
           ? error.message
@@ -2165,12 +2220,12 @@ export function AudioEditor() {
         );
         debugLog("💬 [FOLLOW UP MESSAGE] Sent follow-up message with S3 download URL.");
       } catch (messageError) {
-        console.warn("⚠️ [FOLLOW UP MESSAGE] Failed to send follow-up message:", messageError);
+        debugWarn("⚠️ [FOLLOW UP MESSAGE] Failed to send follow-up message:", messageError);
       }
 
       debugLog("🔗 [AUDIO DOWNLOAD] Resolved download URL:", resolvedDownloadUrl);
     } catch (error) {
-      console.error("❌ [AUDIO GENERATE] Failed to export audio:", error);
+      debugError("❌ [AUDIO GENERATE] Failed to export audio:", error);
       
       // Track export error event
       trackError({
@@ -2349,6 +2404,32 @@ export function AudioEditor() {
 
   const audioSource = getAudioSource();
 
+  // Show loading screen while checking for audio source
+  if (isCheckingAudioSource) {
+    return (
+      <div className="ringtone-editor">
+        <div className="ringtone-header">
+          <div className="upload-title-container">            
+            <svg className="upload-title-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 5C8.55228 5 9 5.44772 9 6V18C9 18.5523 8.55228 19 8 19C7.44772 19 7 18.5523 7 18V6C7 5.44772 7.44772 5 8 5ZM16 7C16.5523 7 17 7.44772 17 8V16C17 16.5523 16.5523 17 16 17C15.4477 17 15 16.5523 15 16V8C15 7.44772 15.4477 7 16 7ZM12 8.5C12.5523 8.5 13 8.94772 13 9.5V14.5C13 15.0523 12.5523 15.5 12 15.5C11.4477 15.5 11 15.0523 11 14.5V9.5C11 8.94772 11.4477 8.5 12 8.5ZM4 9.5C4.55228 9.5 5 9.94772 5 10.5V13.5C5 14.0523 4.55228 14.5 4 14.5C3.44772 14.5 3 14.0523 3 13.5V10.5C3 9.94772 3.44772 9.5 4 9.5ZM20 9.5C20.5523 9.5 21 9.94772 21 10.5V13.5C21 14.0523 20.5523 14.5 20 14.5C19.4477 14.5 19 14.0523 19 13.5V10.5C19 9.94772 19.4477 9.5 20 9.5Z" fill="currentColor"/>
+            </svg>
+            <h2 className="upload-title">Upload Audio File</h2>
+          </div>
+        </div>
+        <div className="waveform-container">
+          <div className="upload-area">
+            <span className="spinner" aria-hidden="true" />
+            <p className="upload-description">Loading</p>
+          </div>
+        </div>
+
+        {/* Submit Container - Skeleton (no button) */}
+        <div className="submit-container">
+        </div>
+      </div>
+    );
+  }
+
   // Show upload UI if no audio source is available
   if (!audioSource) {
     return (
@@ -2399,7 +2480,7 @@ export function AudioEditor() {
             <p className="upload-description">
               {isDraggingOver ? 'Drop your audio file here' : (
                 <>
-                  <b>Drag-n-drop</b> an audio file or <b>choose one</b> to edit
+                  <b>Drag-n-drop</b> or <b>choose an audio file</b> to edit
                 </>
               )}
             </p>
@@ -2527,10 +2608,15 @@ export function AudioEditor() {
             onClick={() => setShowFormatDropdown(!showFormatDropdown)}
           >
             <span>
-              {isRingtoneMode 
-                ? (outputFormat === 'm4r' ? 'For iPhone' : 'For Android')
-                : `Export as .${outputFormat}`
-              }
+              {(() => {
+                const isMobile = typeof window !== 'undefined' && window.innerWidth <= 424;
+                if (isRingtoneMode) {
+                  return outputFormat === 'm4r' 
+                    ? (isMobile ? 'iPhone' : 'For iPhone')
+                    : (isMobile ? 'Android' : 'For Android');
+                }
+                return isMobile ? `.${outputFormat}` : `Export as .${outputFormat}`;
+              })()}
             </span>
             <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.292892 0.292894C0.683416 -0.0976306 1.31658 -0.0976315 1.70711 0.292892L7.00002 5.58579L12.2929 0.292894C12.6834 -0.0976306 13.3166 -0.0976315 13.7071 0.292892C14.0976 0.683416 14.0976 1.31658 13.7071 1.70711L7.70713 7.70711C7.51959 7.89464 7.26524 8 7.00002 8C6.7348 8 6.48045 7.89464 6.29291 7.70711L0.292894 1.70711C-0.0976306 1.31658 -0.0976315 0.683419 0.292892 0.292894Z" fill="currentColor"/>
@@ -2748,11 +2834,11 @@ export function AudioEditor() {
                       setTimeout(() => setIsPlaying(true), 100);
                     }
                   }}
-                  aria-label="Toggle music track"
+                  aria-label="Toggle Background track"
                 >
                   <div className="toggle-slider" />
                 </button>
-                <span className="waveform-track-label">Music</span>
+                <span className="waveform-track-label">Backing</span>
               </div>
               <div
                 className="waveform-container"

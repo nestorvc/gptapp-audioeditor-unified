@@ -8,6 +8,28 @@
  * Only metadata and user actions are logged.
  */
 
+// Debug utility - only logs if DEBUG is not 'false'
+// Checks: window.__DEBUG__, import.meta.env.DEBUG, or import.meta.env.VITE_DEBUG
+const DEBUG = (() => {
+  if (typeof window !== 'undefined' && window.__DEBUG__ === 'false') {
+    return false;
+  }
+  if (import.meta.env?.DEBUG === 'false' || import.meta.env?.VITE_DEBUG === 'false') {
+    return false;
+  }
+  return true; // Default to logging enabled
+})();
+const debugLog = (...args) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+const debugWarn = (...args) => {
+  if (DEBUG) {
+    console.warn(...args);
+  }
+};
+
 // API base URL (injected by server via window.__API_BASE_URL__)
 const API_BASE_URL = typeof window !== 'undefined' && window.__API_BASE_URL__ 
   ? window.__API_BASE_URL__.replace(/\/$/, '') // Remove trailing slash
@@ -119,12 +141,12 @@ function getDeviceInfo() {
  */
 export function trackEvent(eventName, parameters = {}) {
   if (!eventName || typeof eventName !== 'string') {
-    console.warn('[Analytics] Invalid event name:', eventName);
+    debugWarn('[Analytics] Invalid event name:', eventName);
     return;
   }
 
   if (!API_BASE_URL) {
-    console.warn('[Analytics] API_BASE_URL not set. Event not tracked:', eventName);
+    debugWarn('[Analytics] API_BASE_URL not set. Event not tracked:', eventName);
     return;
   }
 
@@ -151,10 +173,10 @@ export function trackEvent(eventName, parameters = {}) {
       sessionId: getSessionId(),
     }),
   }).catch((error) => {
-    console.warn('[Analytics] Error sending event to server:', error);
+    debugWarn('[Analytics] Error sending event to server:', error);
   });
 
-  console.log('[Analytics] Event tracked:', eventName, eventParams);
+  debugLog('[Analytics] Event tracked:', eventName, eventParams);
 }
 
 /**
