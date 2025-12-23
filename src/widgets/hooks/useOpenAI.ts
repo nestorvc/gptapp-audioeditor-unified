@@ -36,6 +36,7 @@ declare global {
       safeArea: {
         insets: { top: number; bottom: number; left: number; right: number };
       };
+      widgetSessionId?: string;
       
       // API methods
       callTool: (name: string, args: Record<string, unknown>) => Promise<any>;
@@ -187,7 +188,8 @@ export function useOpenAIGlobals() {
     locale: window.openai?.locale || 'en',
     maxHeight: window.openai?.maxHeight || 400,
     displayMode: window.openai?.displayMode || 'inline',
-    safeArea: window.openai?.safeArea || { insets: { top: 0, bottom: 0, left: 0, right: 0 } }
+    safeArea: window.openai?.safeArea || { insets: { top: 0, bottom: 0, left: 0, right: 0 } },
+    widgetSessionId: window.openai?.widgetSessionId || undefined
   }));
   
   useEffect(() => {
@@ -199,7 +201,8 @@ export function useOpenAIGlobals() {
           locale: window.openai.locale || 'en',
           maxHeight: window.openai.maxHeight || 400,
           displayMode: window.openai.displayMode || 'inline',
-          safeArea: window.openai.safeArea || { insets: { top: 0, bottom: 0, left: 0, right: 0 } }
+          safeArea: window.openai.safeArea || { insets: { top: 0, bottom: 0, left: 0, right: 0 } },
+          widgetSessionId: window.openai.widgetSessionId || undefined
         });
       }
     };

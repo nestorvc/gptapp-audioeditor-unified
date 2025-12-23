@@ -39,11 +39,17 @@ const API_BASE_URL = typeof window !== 'undefined' && window.__API_BASE_URL__
 const SESSION_STORAGE_KEY = 'ga4_chatgpt_session_id';
 
 /**
- * Get or create a session ID for the current ChatGPT conversation
- * Uses sessionStorage to persist across widget instances in the same conversation
+ * Get session ID for the current ChatGPT conversation
+ * Uses OpenAI's widgetSessionId if available, otherwise falls back to custom session ID
  * @returns {string} Session ID
  */
 export function getSessionId() {
+  // Prefer OpenAI's widgetSessionId if available
+  if (typeof window !== 'undefined' && window.openai?.widgetSessionId) {
+    return window.openai.widgetSessionId;
+  }
+
+  // Fallback to custom session ID stored in sessionStorage
   if (typeof window === 'undefined' || !window.sessionStorage) {
     // Fallback if sessionStorage is not available
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

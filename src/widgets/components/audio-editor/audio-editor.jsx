@@ -9,7 +9,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./audio-editor.css";
-import { useToolOutput, useSendFollowUpMessage, useOpenAIGlobals } from "../../hooks/useOpenAI";
+import { useToolOutput, useSendFollowUpMessage, useOpenAIGlobals, useCallTool, useWidgetState } from "../../hooks/useOpenAI";
 import {
   trackWidgetOpened,
   trackAudioLoaded,
@@ -383,6 +383,8 @@ export function AudioEditor() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isCheckingAudioSource, setIsCheckingAudioSource] = useState(true);
   const sendFollowUpMessage = useSendFollowUpMessage();
+  const { callTool } = useCallTool();
+  const [widgetState, setWidgetState] = useWidgetState({ exportedUrl: null });
   // Vocal extraction state
   const [isExtractingVocals, setIsExtractingVocals] = useState(false);
   const [extractingVocalsMessage, setExtractingVocalsMessage] = useState("Separating...");
@@ -409,7 +411,7 @@ export function AudioEditor() {
       return;
     }
 
-    const messages = ["Separating...", "Processing...", "Almost there..."];
+    const messages = ["Separating...", "Processing...", "Audio magic...", "Isolating...", "Breaking up...", "Almost there...", "Taking a while...", "Be patient..."];
     let currentIndex = 0;
     setExtractingVocalsMessage(messages[currentIndex]);
 
@@ -899,6 +901,7 @@ export function AudioEditor() {
     setIsVocalsMode(false);
     setVocalsAudioUrl(null);
     setMusicAudioUrl(null);
+    setWaveformData([]);
     setVocalsWaveformData([]);
     setMusicWaveformData([]);
     setVocalsEnabled(true);
@@ -1047,6 +1050,11 @@ export function AudioEditor() {
     setIsDetectingBPMKey(false);
     setBpm(null);
     setKey(null);
+    
+    // Clear waveform data when loading new audio to prevent stale data
+    setWaveformData([]);
+    setVocalsWaveformData([]);
+    setMusicWaveformData([]);
 
     // Note: window.openai is a Proxy object and cannot be cloned/logged directly
     // Log only available file-related properties if needed
@@ -2201,6 +2209,22 @@ export function AudioEditor() {
       setDownloadUrl(resolvedDownloadUrl);
       setGenerationSuccess("Your audio download link is ready.");
 
+      // Update widget state with exported URL
+      const exportedFileName = sanitizeFileName(trackName || uploadedFileName || "audio-track");
+      setWidgetState({ exportedUrl: resolvedDownloadUrl });
+
+      // Notify ChatGPT about the download link
+      try {
+        await callTool("audio.notify_download_link_ready", {
+          downloadUrl: resolvedDownloadUrl,
+          fileName: exportedFileName,
+          format: outputFormat,
+        });
+        debugLog("✅ [MCP TOOL] Notified ChatGPT about audio download link");
+      } catch (toolError) {
+        debugWarn("⚠️ [MCP TOOL] Failed to notify ChatGPT about download link:", toolError);
+      }
+
       // Track successful export event
       trackAudioExported({
         format: outputFormat,
@@ -2569,7 +2593,7 @@ export function AudioEditor() {
             {isDetectingBPMKey ? (
               <>
                 <span className="spinner" aria-hidden="true" />
-                <span>Loading attributes...</span>
+                <span className="loading-text">Loading attributes...</span>
               </>
             ) : (
               <span>{duplicatedText || formatMarqueeText()}</span>

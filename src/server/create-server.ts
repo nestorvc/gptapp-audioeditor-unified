@@ -21,14 +21,13 @@
  * MCP Tools:
  * - audio.open_audio_editor - Opens the audio editor widget
  * - audio.open_ringtone_editor - Opens the ringtone editor widget (same UI, ringtone-specific format options)
- * - audio.convert_to_mp3 - Converts remote audio URL to MP3 format
- * - audio.convert_to_wav - Converts remote audio URL to WAV format
- * - audio.convert_to_flac - Converts remote audio URL to FLAC format
- * - audio.convert_to_ogg - Converts remote audio URL to OGG (Opus) format
- * - audio.convert_to_m4a - Converts remote audio URL to M4A (AAC) format
- * - audio.convert_to_m4r - Converts remote audio URL to M4R (iOS ringtone) format
- * - audio.trim_first_30_seconds - Trims first 30 seconds with fade in/out
- * - audio.trim_last_30_seconds - Trims last 30 seconds with fade in/out
+ * - audio.convert_from_url - Converts audio from a public URL to different formats (MP3, WAV, FLAC, OGG, M4A, M4R)
+ * - audio.trim_start_of_audio - Trims first 30 seconds with fade in/out
+ * - audio.trim_end_of_audio - Trims last 30 seconds with fade in/out
+ * - audio.separate_voice_from_music - Separates vocals and music into two tracks
+ * - audio.remove_vocals - Removes vocals, returns instrumental only
+ * - audio.extract_vocals - Extracts vocals, returns vocal track only
+ * - audio.detect_bpm_and_key - Detects BPM and musical key
  * - audio.notify_download_link_ready - Notifies ChatGPT about audio download links
  * 
  * The widgets are loaded from the build/widgets directory and inlined as self-contained HTML
@@ -67,6 +66,85 @@ import { trackMCPTool } from "./services/analytics.js";
 const ASSETS_DIR = path.resolve(projectRoot, "dist", "widgets");
 
 /* ----------------------------- HELPER FUNCTIONS ----------------------------- */
+// Creates user-friendly error messages
+function createUserFriendlyError(error: unknown, context: string): Error {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  // Map common technical errors to user-friendly messages
+  const errorMappings: Record<string, string> = {
+    "Failed to download audio": "Couldn't download the audio file. Please check the URL is accessible and try again.",
+    "HTTP status 404": "The audio file wasn't found at that URL. Please check the link and try again.",
+    "HTTP status 403": "Access to the audio file was denied. The file may be private or require authentication.",
+    "Invalid audio format": `This audio format isn't supported. Please use MP3, WAV, M4A, AAC, OGG, or WebM.`,
+    "LALALAI_KEY": "Voice separation service is temporarily unavailable. Please try again later.",
+    "S3 configuration": "Audio storage is not configured. Please contact support.",
+  };
+  
+  // Check for partial matches
+  for (const [key, message] of Object.entries(errorMappings)) {
+    if (errorMessage.toLowerCase().includes(key.toLowerCase())) {
+      return new Error(message);
+    }
+  }
+  
+  // Default: return original error but make it more conversational
+  return new Error(`${context} ${errorMessage}`);
+}
+
+// Creates follow-up suggestions based on tool and context
+function getFollowUpSuggestions(toolName: string, hasAudio: boolean): string[] {
+  const suggestions: Record<string, string[]> = {
+    "audio.open_audio_editor": [
+      "Try adjusting the trim points to select a different section",
+      "Add fade in/out effects for smoother transitions",
+      "Export in a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+      "Separate vocals from background audio",
+    ],
+    "audio.open_ringtone_editor": [
+      "Trim to a shorter section (ringtones work best at 30 seconds or less)",
+      "Adjust fade effects for a smooth start and end",
+      "Export as M4R for iPhone or OGG for Android",
+      "Separate vocals from music",
+    ],
+    "audio.convert_from_url": [
+      "Try converting to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+      "Open the audio editor for more editing options",
+    ],
+    "audio.trim_start_of_audio": [
+      "Try trimming the end instead",
+      "Open the audio editor for custom trim points",
+      "Convert to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+    ],
+    "audio.trim_end_of_audio": [
+      "Try trimming the start instead",
+      "Open the audio editor for custom trim points",
+      "Convert to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+    ],
+    "audio.separate_voice_from_music": [
+      "Open the audio editor to edit the separated tracks",
+      "Try removing vocals or extracting vocals separately",
+      "Convert to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+    ],
+    "audio.remove_vocals": [
+      "Open the audio editor to edit the instrumental track",
+      "Try extracting vocals instead",
+      "Convert to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+    ],
+    "audio.extract_vocals": [
+      "Open the audio editor to edit the vocal track",
+      "Try removing vocals instead",
+      "Convert to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+    ],
+    "audio.detect_bpm_and_key": [
+      "Open the audio editor to edit this track",
+      "Try separating vocals from music",
+      "Convert to a different format (MP3, WAV, FLAC, OGG, M4A, M4R)",
+    ],
+  };
+  
+  return suggestions[toolName] || [];
+}
+
 // Loads and inlines React widget assets (JS, CSS) into self-contained HTML
 function loadWidgetHtml(componentName: string): string {
   if (!fs.existsSync(ASSETS_DIR)) {
@@ -202,7 +280,7 @@ export const createServer = () => {
     {
       title: "Open Audio Editor",
       description:
-        "Use this when the user wants to trim, cut, fade, preview, or enhance an audio file and export it to formats like MP3, WAV, FLAC, OGG, or M4A.",
+        "Use this when the user wants to edit audio interactively with trimming, fading, and format conversion. Supports MP3, WAV, FLAC, OGG, M4A, M4R formats. Use this for custom trim points, fade adjustments, or when the user wants visual waveform editing. Do not use for simple format conversion without editing - use audio.convert_from_url instead. Do not use for ringtones - use audio.open_ringtone_editor instead.",
       inputSchema: {
         audioFile: z
           .object({
@@ -245,13 +323,18 @@ export const createServer = () => {
       // Priority: provided audioUrl > audioFile download_url
       const audioUrl = providedAudioUrl ?? audioFile?.download_url ?? null;
 
+      const followUps = getFollowUpSuggestions("audio.open_audio_editor", !!audioUrl);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
+
       return {
         content: [
           {
             type: "text",
             text: audioUrl
-              ? "Audio editor is ready with your audio file! Trim sections, tweak fades, and export to your favorite format."
-              : "Audio editor is ready! Trim sections, tweak fades, and export to your favorite format.",
+              ? `Audio editor is ready with your audio file! Trim sections, tweak fades, and export to your favorite format.${followUpText}`
+              : `Audio editor is ready! Upload an audio file or provide a URL to get started.${followUpText}`,
           },
         ],
         structuredContent: {
@@ -259,6 +342,7 @@ export const createServer = () => {
           message: "Audio editor ready",
           defaultFormat: "mp3",
           formats: AUDIO_EXPORT_FORMATS,
+          followUpSuggestions: followUps,
         },
         _meta: {
           hasAudioUrl: !!audioUrl,
@@ -273,7 +357,7 @@ export const createServer = () => {
     {
       title: "Open Ringtone Editor",
       description:
-        "Use this when the user wants to create or edit a ringtone by trimming an audio file, adjusting fades, and exporting it.",
+        "Use this when the user wants to create or edit a ringtone. Optimized for ringtone creation with format options for iPhone (M4R) and Android (OGG). Use this specifically for ringtones. Do not use for general audio editing - use audio.open_audio_editor instead.",
       inputSchema: {
         audioFile: z
           .object({
@@ -322,13 +406,18 @@ export const createServer = () => {
         mode: "ringtone",
       });
 
+      const followUps = getFollowUpSuggestions("audio.open_ringtone_editor", !!audioUrl);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
+
       return {
         content: [
           {
             type: "text",
             text: audioUrl
-              ? "Ringtone editor is ready with your audio file! Trim your audio and export it as a ringtone."
-              : "Ringtone editor is ready! Trim your audio and export it as a ringtone.",
+              ? `Ringtone editor is ready with your audio file! Trim your audio and export it as a ringtone.${followUpText}`
+              : `Ringtone editor is ready! Upload an audio file or provide a URL to get started.${followUpText}`,
           },
         ],
         structuredContent: {
@@ -337,6 +426,7 @@ export const createServer = () => {
           defaultFormat: "m4r",
           formats: AUDIO_EXPORT_FORMATS,
           mode: "ringtone",
+          followUpSuggestions: followUps,
         },
         _meta: {
           hasAudioUrl: !!audioUrl,
@@ -346,278 +436,129 @@ export const createServer = () => {
   );
 
   /* Notify Download Link Tools */
-  const registerNotifyDownloadLinkTool = ({
-    toolName,
-    title,
-    description,
-    invoking,
-    invoked,
-    defaultFileName,
-    extraField,
-  }: {
-    toolName: string;
-    title: string;
-    description: string;
-    invoking: string;
-    invoked: string;
-    defaultFileName: string;
-    extraField?: {
-      name: "format";
-      schema: z.ZodTypeAny;
-      describe: string;
-    };
-  }) => {
-    const baseSchema = {
-      downloadUrl: z
-        .string()
-        .url("Provide a valid HTTPS URL for the audio download.")
-        .describe(
-          "Public HTTPS URL where the generated audio can be downloaded. Example: https://downloads.example.com/audio/final.mp3",
-        ),
-      fileName: z
-        .string()
-        .max(120, "File name must be 120 characters or fewer.")
-        .optional()
-        .describe("Suggested file name shown to the user. Example: Final.mp3"),
-    };
-
-    const inputSchema = extraField
-      ? { ...baseSchema, [extraField.name]: extraField.schema.optional().describe(extraField.describe) }
-      : baseSchema;
-
-    server.registerTool(
-      toolName,
-      {
-        title,
-        description,
-        inputSchema,
-        _meta: {
-          "openai/toolInvocation/invoking": invoking,
-          "openai/toolInvocation/invoked": invoked,
-        },
-        annotations: { readOnlyHint: true },
+  /* Audio Conversion Tool - Consolidated */
+  server.registerTool(
+    "audio.convert_from_url",
+    {
+      title: "Convert Audio Format",
+      description:
+        "Use this when the user wants to convert an audio file from a public URL to a different format without editing. Supported formats: MP3, WAV, FLAC, OGG, M4A, M4R. Use this for simple format conversion only. Do not use if the user wants to trim, fade, or edit the audio - use audio.open_audio_editor instead. Do not use for unsupported formats.",
+      inputSchema: {
+        audioUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL to the source audio file.")
+          .describe(
+            "Public HTTPS URL of the audio to convert. Example: https://cdn.example.com/audio/song.wav",
+          ),
+        format: z
+          .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+          .describe(`Target format: ${AUDIO_EXPORT_FORMATS.join(", ")}`),
+        trackName: z
+          .string()
+          .max(80, "Track name must be 80 characters or fewer.")
+          .optional()
+          .describe("Optional display name for the exported file. Example: Session_Mix"),
       },
-      async (rawParams: any) => {
-        const { downloadUrl, fileName, ...extra } = rawParams;
-        const safeFileName = fileName ?? defaultFileName;
-
-        const format = extra.format;
-        const label = format ? `${format.toUpperCase()} audio` : "audio";
-        const structuredContent = {
-          type: "audioDownload",
-          downloadUrl,
-          fileName: safeFileName,
-          format: format ?? null,
-        };
-
-        await trackMCPTool(toolName, {
-          has_download_url: !!downloadUrl,
-          has_file_name: !!fileName,
-          format: format ?? null,
-        });
-
-        console.log(`[MCP NOTIFIER] Notified ChatGPT about audio download URL.`);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Here is the generated ${label}: ${safeFileName}`,
-            },
-          ],
-          structuredContent,
-        };
+      _meta: {
+        "openai/toolInvocation/invoking": "Converting audio format",
+        "openai/toolInvocation/invoked": "Audio converted",
       },
-    );
-  };
-
-  /* Audio Conversion Tools */
-  const registerAudioConversionTool = ({
-    format,
-    toolName,
-    title,
-    description,
-    invoking,
-    invoked,
-  }: {
-    format: AudioExportFormat;
-    toolName: string;
-    title: string;
-    description: string;
-    invoking: string;
-    invoked: string;
-  }) => {
-    server.registerTool(
-      toolName,
-      {
-        title,
-        description,
-        inputSchema: {
+      annotations: { readOnlyHint: true },
+    },
+    async (rawParams) => {
+      const { audioUrl, format, trackName } = z
+        .object({
           audioUrl: z
             .string()
             .url("Provide a valid HTTPS URL to the source audio file.")
             .describe(
-              "Public HTTPS URL of the audio to convert into the selected export format. Example: https://cdn.example.com/audio/song.wav",
+              "Public HTTPS URL of the audio to convert. Example: https://cdn.example.com/audio/song.wav",
             ),
+          format: z
+            .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+            .describe(`Target format: ${AUDIO_EXPORT_FORMATS.join(", ")}`),
           trackName: z
             .string()
             .max(80, "Track name must be 80 characters or fewer.")
             .optional()
             .describe("Optional display name for the exported file. Example: Session_Mix"),
-        },
-        _meta: {
-          "openai/toolInvocation/invoking": invoking,
-          "openai/toolInvocation/invoked": invoked,
-        },
-        annotations: { readOnlyHint: true },
-      },
-      async (rawParams) => {
-        const { audioUrl, trackName } = z
-          .object({
-            audioUrl: z
-              .string()
-              .url("Provide a valid HTTPS URL to the source audio file.")
-              .describe(
-                "Public HTTPS URL of the audio to convert into the selected export format. Example: https://cdn.example.com/audio/song.wav",
-              ),
-            trackName: z
-              .string()
-              .max(80, "Track name must be 80 characters or fewer.")
-              .optional()
-              .describe("Optional display name for the exported file. Example: Session_Mix"),
-          })
-          .describe("Request parameters for generating a hosted audio download in the selected format.")
-          .parse(rawParams);
-        
-        const startTime = Date.now();
-        let result;
-        let error: string | undefined;
+        })
+        .parse(rawParams);
+      
+      const startTime = Date.now();
+      let result;
 
-        try {
-          result = await convertRemoteAudioToFormat({
-            audioUrl,
+      try {
+        result = await convertRemoteAudioToFormat({
+          audioUrl,
+          format,
+          suggestedTrackName: trackName ?? null,
+        });
+
+        console.log("[Audio Export] Converted via MCP tool", {
+          format: result.format,
+          fileName: result.fileName,
+          audioUrl,
+        });
+
+        await trackMCPTool(
+          "audio.convert_from_url",
+          {
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
             format,
-            suggestedTrackName: trackName ?? null,
-          });
-
-          console.log("[Audio Export] Converted via MCP tool", {
-            format: result.format,
-            fileName: result.fileName,
-            audioUrl,
-          });
-
-          await trackMCPTool(
-            toolName,
-            {
-              has_audio_url: !!audioUrl,
-              has_track_name: !!trackName,
-              format,
-            },
-            {
-              success: true,
-              result_format: result.format,
-              file_name: result.fileName,
-              processing_time_ms: Date.now() - startTime,
-            }
-          );
-
-          await server.server.sendLoggingMessage({
-            level: "info",
-            data: `🎧 Audio export ready: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
-          });
-        } catch (err) {
-          error = err instanceof Error ? err.message : "Unknown error";
-          await trackMCPTool(
-            toolName,
-            {
-              has_audio_url: !!audioUrl,
-              has_track_name: !!trackName,
-              format,
-            },
-            {
-              success: false,
-              error,
-            }
-          );
-          throw err;
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Audio export ready (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}`,
-            },
-          ],
-          structuredContent: {
-            type: "audioDownload" as const,
-            downloadUrl: result.downloadUrl,
-            fileName: result.fileName,
-            format: result.format,
           },
-        };
-      },
-    );
-  };
+          {
+            success: true,
+            result_format: result.format,
+            file_name: result.fileName,
+            processing_time_ms: Date.now() - startTime,
+          }
+        );
 
-  registerAudioConversionTool({
-    format: "mp3",
-    toolName: "audio.convert_to_mp3",
-    title: "Convert Audio to MP3 (.mp3)",
-    description:
-      "Use this when a user provides a remote audio URL that should become a downloadable MP3 file.",
-    invoking: "Converting audio to MP3",
-    invoked: "MP3 download ready",
-  });
+        await server.server.sendLoggingMessage({
+          level: "info",
+          data: `🎧 Audio export ready: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
+        });
+      } catch (err) {
+        const userFriendlyError = createUserFriendlyError(err, "Failed to convert audio:");
+        await trackMCPTool(
+          "audio.convert_from_url",
+          {
+            has_audio_url: !!audioUrl,
+            has_track_name: !!trackName,
+            format,
+          },
+          {
+            success: false,
+            error: userFriendlyError.message,
+          }
+        );
+        throw userFriendlyError;
+      }
 
-  registerAudioConversionTool({
-    format: "wav",
-    toolName: "audio.convert_to_wav",
-    title: "Convert Audio to WAV (.wav)",
-    description:
-      "Use this when a user provides a remote audio URL that should become a downloadable uncompressed WAV file.",
-    invoking: "Converting audio to WAV",
-    invoked: "WAV download ready",
-  });
+      const followUps = getFollowUpSuggestions("audio.convert_from_url", true);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
 
-  registerAudioConversionTool({
-    format: "flac",
-    toolName: "audio.convert_to_flac",
-    title: "Convert Audio to FLAC (.flac)",
-    description:
-      "Use this when a user provides a remote audio URL that should become a downloadable lossless FLAC file.",
-    invoking: "Converting audio to FLAC",
-    invoked: "FLAC download ready",
-  });
-
-  registerAudioConversionTool({
-    format: "ogg",
-    toolName: "audio.convert_to_ogg",
-    title: "Convert Audio to OGG (.ogg)",
-    description:
-      "Use this when a user provides a remote audio URL that should become a downloadable OGG (Opus) file.",
-    invoking: "Converting audio to OGG",
-    invoked: "OGG download ready",
-  });
-
-  registerAudioConversionTool({
-    format: "m4a",
-    toolName: "audio.convert_to_m4a",
-    title: "Convert Audio to M4A (.m4a)",
-    description:
-      "Use this when a user provides a remote audio URL that should become a downloadable M4A (AAC) file.",
-    invoking: "Converting audio to M4A",
-    invoked: "M4A download ready",
-  });
-
-  registerAudioConversionTool({
-    format: "m4r",
-    toolName: "audio.convert_to_m4r",
-    title: "Convert Audio to M4R (.m4r)",
-    description:
-      "Use this when a user provides a remote audio URL that should become a downloadable M4R (iOS ringtone) file.",
-    invoking: "Converting audio to M4R",
-    invoked: "M4R download ready",
-  });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Audio converted to .${result.format.toUpperCase()}: ${result.fileName}\nDownload: ${result.downloadUrl}${followUpText}`,
+          },
+        ],
+        structuredContent: {
+          type: "audioDownload" as const,
+          downloadUrl: result.downloadUrl,
+          fileName: result.fileName,
+          format: result.format,
+          followUpSuggestions: followUps,
+        },
+      };
+    },
+  );
 
   /* Trim Tools */
   server.registerTool(
@@ -625,7 +566,7 @@ export const createServer = () => {
     {
       title: "Trim Start of Audio",
       description:
-        "Use this when a user wants to extract the start of an audio file. Automatically applies fade in and fade out effects.",
+        "Use this when the user wants to extract exactly the first 30 seconds of an audio file with automatic fade in/out effects. Use this for quick intro extraction. Do not use if the user wants custom trim points, different duration, or manual fade control - use audio.open_audio_editor instead. Requires audio to be at least 30 seconds long.",
       inputSchema: {
         audioUrl: z
           .string()
@@ -707,7 +648,7 @@ export const createServer = () => {
           data: `🎧 First 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
         });
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        const userFriendlyError = createUserFriendlyError(err, "Failed to trim audio:");
         await trackMCPTool(
           "audio.trim_start_of_audio",
           {
@@ -717,17 +658,22 @@ export const createServer = () => {
           },
           {
             success: false,
-            error,
+            error: userFriendlyError.message,
           }
         );
-        throw err;
+        throw userFriendlyError;
       }
+
+      const followUps = getFollowUpSuggestions("audio.trim_start_of_audio", true);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `First 30 seconds trimmed (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}`,
+            text: `First 30 seconds trimmed (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}${followUpText}`,
           },
         ],
         structuredContent: {
@@ -735,6 +681,7 @@ export const createServer = () => {
           downloadUrl: result.downloadUrl,
           fileName: result.fileName,
           format: result.format,
+          followUpSuggestions: followUps,
         },
       };
     },
@@ -745,7 +692,7 @@ export const createServer = () => {
     {
       title: "Trim End of Audio",
       description:
-        "Use this when a user wants to extract the end of an audio file. Automatically applies fade in and fade out effects.",
+        "Use this when the user wants to extract exactly the last 30 seconds of an audio file with automatic fade in/out effects. Use this for quick outro extraction. Do not use if the user wants custom trim points, different duration, or manual fade control - use audio.open_audio_editor instead. Requires audio to be at least 30 seconds long.",
       inputSchema: {
         audioUrl: z
           .string()
@@ -827,7 +774,7 @@ export const createServer = () => {
           data: `🎧 Last 30 seconds trimmed: ${result.trackName} (.${result.format.toUpperCase()})${result.downloadUrl ? ` (${result.downloadUrl})` : ""}`,
         });
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        const userFriendlyError = createUserFriendlyError(err, "Failed to trim audio:");
         await trackMCPTool(
           "audio.trim_end_of_audio",
           {
@@ -837,17 +784,22 @@ export const createServer = () => {
           },
           {
             success: false,
-            error,
+            error: userFriendlyError.message,
           }
         );
-        throw err;
+        throw userFriendlyError;
       }
+
+      const followUps = getFollowUpSuggestions("audio.trim_end_of_audio", true);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Last 30 seconds trimmed (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}`,
+            text: `Last 30 seconds trimmed (.${result.format}): ${result.fileName}\nDownload: ${result.downloadUrl}${followUpText}`,
           },
         ],
         structuredContent: {
@@ -855,6 +807,7 @@ export const createServer = () => {
           downloadUrl: result.downloadUrl,
           fileName: result.fileName,
           format: result.format,
+          followUpSuggestions: followUps,
         },
       };
     },
@@ -866,7 +819,7 @@ export const createServer = () => {
     {
       title: "Separate Voice from Music",
       description:
-        "Separates vocals from music in an audio file, returning two separate tracks: one with vocals and one with instrumental music.",
+        "Use this when the user wants to separate vocals from music and get both tracks (vocals and instrumental). Use this when the user explicitly wants both separated tracks. Do not use if the user only wants vocals (use audio.extract_vocals) or only wants instrumental (use audio.remove_vocals). Works best with music that has clear vocal and instrumental separation.",
       inputSchema: {
         audioFile: z
           .object({
@@ -962,7 +915,7 @@ export const createServer = () => {
           data: `🎤 Voice separation complete: ${result.trackName}\nVocals: ${result.vocalsFileName}\nMusic: ${result.musicFileName}`,
         });
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        const userFriendlyError = createUserFriendlyError(err, "Failed to separate vocals:");
         await trackMCPTool(
           "audio.separate_voice_from_music",
           {
@@ -972,17 +925,22 @@ export const createServer = () => {
           },
           {
             success: false,
-            error,
+            error: userFriendlyError.message,
           }
         );
-        throw err;
+        throw userFriendlyError;
       }
+
+      const followUps = getFollowUpSuggestions("audio.separate_voice_from_music", true);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Voice and music separated successfully!\n\nVocals: ${result.vocalsFileName}\nDownload: ${result.vocalsUrl}\n\nMusic: ${result.musicFileName}\nDownload: ${result.musicUrl}`,
+            text: `Voice and music separated successfully!\n\nVocals: ${result.vocalsFileName}\nDownload: ${result.vocalsUrl}\n\nMusic: ${result.musicFileName}\nDownload: ${result.musicUrl}${followUpText}`,
           },
         ],
         structuredContent: {
@@ -996,6 +954,7 @@ export const createServer = () => {
             fileName: result.musicFileName,
           },
           trackName: result.trackName,
+          followUpSuggestions: followUps,
         },
       };
     },
@@ -1007,7 +966,7 @@ export const createServer = () => {
     {
       title: "Remove Vocals",
       description:
-        "Removes vocals from an audio file, returning only the instrumental music track without vocals.",
+        "Use this when the user wants to remove vocals from audio and get only the instrumental/background music track. Use this when the user explicitly wants instrumental only. Do not use if the user wants both tracks (use audio.separate_voice_from_music) or only vocals (use audio.extract_vocals). Works best with music that has clear vocal and instrumental separation.",
       inputSchema: {
         audioFile: z
           .object({
@@ -1101,7 +1060,7 @@ export const createServer = () => {
           data: `🎵 Vocals removed: ${result.trackName}\nInstrumental: ${result.musicFileName}`,
         });
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        const userFriendlyError = createUserFriendlyError(err, "Failed to remove vocals:");
         await trackMCPTool(
           "audio.remove_vocals",
           {
@@ -1111,17 +1070,22 @@ export const createServer = () => {
           },
           {
             success: false,
-            error,
+            error: userFriendlyError.message,
           }
         );
-        throw err;
+        throw userFriendlyError;
       }
+
+      const followUps = getFollowUpSuggestions("audio.remove_vocals", true);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Vocals removed successfully!\n\nInstrumental track: ${result.musicFileName}\nDownload: ${result.musicUrl}`,
+            text: `Vocals removed successfully!\n\nInstrumental track: ${result.musicFileName}\nDownload: ${result.musicUrl}${followUpText}`,
           },
         ],
         structuredContent: {
@@ -1129,6 +1093,7 @@ export const createServer = () => {
           downloadUrl: result.musicUrl,
           fileName: result.musicFileName,
           format: "instrumental",
+          followUpSuggestions: followUps,
         },
       };
     },
@@ -1140,7 +1105,7 @@ export const createServer = () => {
     {
       title: "Extract Vocals",
       description:
-        "Extracts vocals from an audio file, returning only the vocal track without the instrumental music.",
+        "Use this when the user wants to extract vocals from audio and get only the vocal track without music. Use this when the user explicitly wants vocals only. Do not use if the user wants both tracks (use audio.separate_voice_from_music) or only instrumental (use audio.remove_vocals). Works best with music that has clear vocal and instrumental separation.",
       inputSchema: {
         audioFile: z
           .object({
@@ -1234,7 +1199,7 @@ export const createServer = () => {
           data: `🎤 Vocals extracted: ${result.trackName}\nVocals: ${result.vocalsFileName}`,
         });
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        const userFriendlyError = createUserFriendlyError(err, "Failed to extract vocals:");
         await trackMCPTool(
           "audio.extract_vocals",
           {
@@ -1244,17 +1209,22 @@ export const createServer = () => {
           },
           {
             success: false,
-            error,
+            error: userFriendlyError.message,
           }
         );
-        throw err;
+        throw userFriendlyError;
       }
+
+      const followUps = getFollowUpSuggestions("audio.extract_vocals", true);
+      const followUpText = followUps.length > 0 
+        ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Vocals extracted successfully!\n\nVocal track: ${result.vocalsFileName}\nDownload: ${result.vocalsUrl}`,
+            text: `Vocals extracted successfully!\n\nVocal track: ${result.vocalsFileName}\nDownload: ${result.vocalsUrl}${followUpText}`,
           },
         ],
         structuredContent: {
@@ -1262,6 +1232,7 @@ export const createServer = () => {
           downloadUrl: result.vocalsUrl,
           fileName: result.vocalsFileName,
           format: "vocals",
+          followUpSuggestions: followUps,
         },
       };
     },
@@ -1273,7 +1244,7 @@ export const createServer = () => {
     {
       title: "Detect BPM and Key",
       description:
-        "Analyzes an audio file to detect its BPM (beats per minute/tempo) and musical key.",
+        "Use this when the user wants to analyze audio to detect BPM (beats per minute/tempo) and musical key. Use this for music analysis, DJ mixing, or music production purposes. Do not use for editing, conversion, or separation - this tool only provides analysis information. Works best with music tracks that have clear rhythm and harmonic content.",
       inputSchema: {
         audioFile: z
           .object({
@@ -1359,21 +1330,27 @@ export const createServer = () => {
           data: `🎵 Audio analysis complete:\nBPM: ${bpmText}\nKey: ${keyText}`,
         });
 
+        const followUps = getFollowUpSuggestions("audio.detect_bpm_and_key", true);
+        const followUpText = followUps.length > 0 
+          ? `\n\nYou can:\n${followUps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+          : "";
+
         return {
           content: [
             {
               type: "text" as const,
-              text: `Audio analysis complete!\n\nBPM: ${bpmText}\nKey: ${keyText}`,
+              text: `Audio analysis complete!\n\nBPM: ${bpmText}\nKey: ${keyText}${followUpText}`,
             },
           ],
           structuredContent: {
             type: "audioAnalysis" as const,
             bpm: result.bpm,
             key: result.key,
+            followUpSuggestions: followUps,
           },
         };
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        const userFriendlyError = createUserFriendlyError(err, "Failed to analyze audio:");
         await trackMCPTool(
           "audio.detect_bpm_and_key",
           {
@@ -1382,28 +1359,73 @@ export const createServer = () => {
           },
           {
             success: false,
-            error,
+            error: userFriendlyError.message,
           }
         );
-        throw err;
+        throw userFriendlyError;
       }
     },
   );
 
-  registerNotifyDownloadLinkTool({
-    toolName: "audio.notify_download_link_ready",
-    title: "Share Generated Audio Link",
-    description:
-      "Use this when the final audio file is hosted at a public URL and needs to be shared with the user for download. Do not use before the export has finished uploading.",
-    invoking: "Sharing audio download link",
-    invoked: "Audio download link shared",
-    defaultFileName: "audio",
-    extraField: {
-      name: "format",
-      schema: z.enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]]),
-      describe: `Target audio format. Supported options: ${AUDIO_EXPORT_FORMATS.join(", ")}. Example: mp3`,
+  server.registerTool(
+    "audio.notify_download_link_ready",
+    {
+      title: "Share Generated Audio Link",
+      description:
+        "Use this when a generated audio file has finished uploading to a public URL and needs to be shared with the user for download. Use this only after the file upload is complete. Do not use before the export has finished uploading. This tool is typically called by the widget after processing completes.",
+      inputSchema: {
+        downloadUrl: z
+          .string()
+          .url("Provide a valid HTTPS URL for the audio download.")
+          .describe(
+            "Public HTTPS URL where the generated audio can be downloaded. Example: https://downloads.example.com/audio/final.mp3",
+          ),
+        fileName: z
+          .string()
+          .max(120, "File name must be 120 characters or fewer.")
+          .optional()
+          .describe("Suggested file name shown to the user. Example: Final.mp3"),
+        format: z
+          .enum([...AUDIO_EXPORT_FORMATS] as [AudioExportFormat, ...AudioExportFormat[]])
+          .optional()
+          .describe(`Target audio format. Supported options: ${AUDIO_EXPORT_FORMATS.join(", ")}. Example: mp3`),
+      },
+      _meta: {
+        "openai/toolInvocation/invoking": "Sharing audio download link",
+        "openai/toolInvocation/invoked": "Audio download link shared",
+        "openai/widgetAccessible": true
+      },
+      annotations: { readOnlyHint: true },
     },
-  });
+    async (rawParams: any) => {
+      const { downloadUrl, fileName, format } = rawParams;
+      const safeFileName = fileName ?? "audio";
+      const label = format ? `${format.toUpperCase()} audio` : "audio";
+      const structuredContent = {
+        type: "audioDownload",
+        downloadUrl,
+        fileName: safeFileName,
+        format: format ?? null,
+      };
+
+      await trackMCPTool("audio.notify_download_link_ready", {
+        has_download_url: !!downloadUrl,
+        has_file_name: !!fileName,
+        format: format ?? null,
+      });
+
+      console.log(`[MCP NOTIFIER] Notified ChatGPT about audio download URL.`);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Here is the generated ${label}: ${safeFileName}`,
+          },
+        ],
+        structuredContent,
+      };
+    },
+  );
 
   console.log("MCP server registered");
   return { server };

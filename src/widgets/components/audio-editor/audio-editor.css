@@ -220,6 +220,11 @@ body {
   .track-name-marquee {
     width: 30px;
   }
+  
+  /* Hide loading text on mobile, keep spinner only */
+  .loading-text {
+    display: none;
+  }
 }
 
 /* Desktop styles for track name marquee */

@@ -169,7 +169,7 @@ function getMCPSpecificEventName(toolName: string): string | null {
       toolName === "audio.extract_vocals") {
     return "mcp_vocal_extraction_started";
   }
-  if (toolName.startsWith("audio.convert_to_")) {
+  if (toolName === "audio.convert" || toolName.startsWith("audio.convert_to_")) {
     return "mcp_audio_conversion_started";
   }
   if (toolName === "audio.trim_start_of_audio" || toolName === "audio.trim_end_of_audio") {
