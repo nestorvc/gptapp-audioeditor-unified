@@ -182,6 +182,14 @@ export function useOpenExternal() {
 
 // Gets theme, device info, and layout constraints from ChatGPT
 export function useOpenAIGlobals() {
+  const getWidgetSessionId = () => {
+    if (typeof window === 'undefined' || !window.openai) return undefined;
+    // Prefer widgetSessionId from toolResponseMetadata (as per OpenAI Apps SDK docs)
+    return window.openai.toolResponseMetadata?.['openai/widgetSessionId'] 
+      || window.openai.widgetSessionId 
+      || undefined;
+  };
+  
   const [globals, setGlobals] = useState(() => ({
     theme: window.openai?.theme || 'light',
     userAgent: window.openai?.userAgent || { device: { type: 'unknown' }, capabilities: { hover: false, touch: false } },
@@ -189,7 +197,7 @@ export function useOpenAIGlobals() {
     maxHeight: window.openai?.maxHeight || 400,
     displayMode: window.openai?.displayMode || 'inline',
     safeArea: window.openai?.safeArea || { insets: { top: 0, bottom: 0, left: 0, right: 0 } },
-    widgetSessionId: window.openai?.widgetSessionId || undefined
+    widgetSessionId: getWidgetSessionId()
   }));
   
   useEffect(() => {
@@ -202,7 +210,7 @@ export function useOpenAIGlobals() {
           maxHeight: window.openai.maxHeight || 400,
           displayMode: window.openai.displayMode || 'inline',
           safeArea: window.openai.safeArea || { insets: { top: 0, bottom: 0, left: 0, right: 0 } },
-          widgetSessionId: window.openai.widgetSessionId || undefined
+          widgetSessionId: getWidgetSessionId()
         });
       }
     };

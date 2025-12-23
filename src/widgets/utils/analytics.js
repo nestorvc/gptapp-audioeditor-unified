@@ -44,7 +44,12 @@ const SESSION_STORAGE_KEY = 'ga4_chatgpt_session_id';
  * @returns {string} Session ID
  */
 export function getSessionId() {
-  // Prefer OpenAI's widgetSessionId if available
+  // Prefer OpenAI's widgetSessionId from toolResponseMetadata (as per OpenAI Apps SDK docs)
+  if (typeof window !== 'undefined' && window.openai?.toolResponseMetadata?.['openai/widgetSessionId']) {
+    return window.openai.toolResponseMetadata['openai/widgetSessionId'];
+  }
+  
+  // Fallback to direct widgetSessionId property (if available)
   if (typeof window !== 'undefined' && window.openai?.widgetSessionId) {
     return window.openai.widgetSessionId;
   }
