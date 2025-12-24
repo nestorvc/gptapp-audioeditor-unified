@@ -35,16 +35,47 @@ const API_BASE_URL = typeof window !== 'undefined' && window.__API_BASE_URL__
   ? window.__API_BASE_URL__.replace(/\/$/, '') // Remove trailing slash
   : '';
 
-// Session ID storage key
-const SESSION_STORAGE_KEY = 'ga4_chatgpt_session_id';
+/**
+ * Detect if the current environment is ChatGPT/OpenAI
+ * @returns {boolean} True if running in ChatGPT, false otherwise
+ */
+function isChatGPT() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  // Check for OpenAI/ChatGPT-specific indicators
+  return !!(
+    window.openai ||
+    window.location?.hostname?.includes('chatgpt.com') ||
+    window.location?.hostname?.includes('oaistatic.com') ||
+    window.location?.hostname?.includes('oaiusercontent.com')
+  );
+}
 
 /**
- * Get session ID for the current ChatGPT conversation
- * Uses OpenAI's widgetSessionId if available, otherwise falls back to custom session ID
+ * Get session storage key based on the source
+ * @returns {string} Storage key for session ID
+ */
+function getSessionStorageKey() {
+  return isChatGPT() ? 'ga4_chatgpt_session_id' : 'ga4_mcp_session_id';
+}
+
+/**
+ * Generate a session ID prefix based on the source
+ * @returns {string} Session ID prefix
+ */
+function getSessionIdPrefix() {
+  return isChatGPT() ? 'chatgpt_session' : 'mcp_session';
+}
+
+/**
+ * Get session ID for the current conversation
+ * Uses OpenAI's widgetSessionId if available (ChatGPT), otherwise falls back to custom session ID
  * @returns {string} Session ID
  */
 export function getSessionId() {
   // Prefer OpenAI's widgetSessionId from toolResponseMetadata (as per OpenAI Apps SDK docs)
+  // This is only available in ChatGPT
   if (typeof window !== 'undefined' && window.openai?.toolResponseMetadata?.['openai/widgetSessionId']) {
     return window.openai.toolResponseMetadata['openai/widgetSessionId'];
   }
@@ -57,17 +88,20 @@ export function getSessionId() {
   // Fallback to custom session ID stored in sessionStorage
   if (typeof window === 'undefined' || !window.sessionStorage) {
     // Fallback if sessionStorage is not available
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const prefix = getSessionIdPrefix();
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  let sessionId = sessionStorage.getItem(SESSION_STORAGE_KEY);
+  const storageKey = getSessionStorageKey();
+  let sessionId = sessionStorage.getItem(storageKey);
   
   if (!sessionId) {
-    // Generate new session ID
+    // Generate new session ID with appropriate prefix
     const timestamp = Date.now();
     const random = Math.random().toString(36).substr(2, 9);
-    sessionId = `chatgpt_session_${timestamp}_${random}`;
-    sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+    const prefix = getSessionIdPrefix();
+    sessionId = `${prefix}_${timestamp}_${random}`;
+    sessionStorage.setItem(storageKey, sessionId);
   }
 
   return sessionId;

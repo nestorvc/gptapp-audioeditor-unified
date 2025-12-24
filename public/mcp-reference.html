@@ -255,6 +255,80 @@
             text-decoration: underline;
         }
         
+        .quickstart {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 32px;
+            margin-bottom: 40px;
+        }
+        
+        .quickstart h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: #1a1a1a;
+        }
+        
+        .quickstart-step {
+            margin-bottom: 24px;
+        }
+        
+        .quickstart-step:last-child {
+            margin-bottom: 0;
+        }
+        
+        .quickstart-step h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #FF6B35;
+            margin-bottom: 12px;
+        }
+        
+        .quickstart-step p {
+            font-size: 16px;
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        
+        .code-block {
+            background: #1a1a1a;
+            color: #f8f9fa;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 12px 0;
+            line-height: 1.5;
+        }
+        
+        .code-block code {
+            color: #f8f9fa;
+        }
+        
+        .mcp-url {
+            background: #e8f4f8;
+            border-left: 4px solid #4285F4;
+            padding: 12px 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            word-break: break-all;
+        }
+        
+        .mcp-url a {
+            color: #4285F4;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .mcp-url a:hover {
+            text-decoration: underline;
+        }
+        
         footer {
             margin-top: 80px;
             padding-top: 20px;
@@ -316,6 +390,50 @@
             <p><strong>What is MCP?</strong> MCP (Model Context Protocol) is a protocol that allows AI assistants like ChatGPT to interact with external tools and services. Audio Console provides a set of MCP tools for audio editing, conversion, and analysis.</p>
             <p><strong>How to use:</strong> These tools are automatically available when Audio Console is configured as an MCP server. In ChatGPT and other MCP-compatible clients, you can ask the AI to perform audio operations, and it will use these tools automatically.</p>
             <p><strong>UI Tools:</strong> Some tools open an interactive UI widget within ChatGPT, allowing you to visually edit audio with waveform visualization, trim controls, and fade effects. Other tools perform operations directly without opening a UI.</p>
+        </div>
+        
+        <!-- Quickstart Guide -->
+        <div class="quickstart">
+            <h2>Quickstart Guide</h2>
+            
+            <div class="quickstart-step">
+                <h3>Step 1: Get the MCP Server URL</h3>
+                <p>The Audio Console MCP server is available at:</p>
+                <div class="mcp-url">
+                    <a href="https://www.audioconsole.app/mcp" target="_blank" rel="noopener noreferrer">https://www.audioconsole.app/mcp</a>
+                </div>
+            </div>
+            
+            <div class="quickstart-step">
+                <h3>Step 2: Configure Your MCP Client</h3>
+                <p>Add Audio Console to your MCP client configuration. For ChatGPT, add the following to your MCP settings:</p>
+                <div class="code-block">
+<code>{
+  "mcpServers": {
+    "audio-console": {
+      "url": "https://www.audioconsole.app/mcp"
+    }
+  }
+}</code>
+                </div>
+            </div>
+            
+            <div class="quickstart-step">
+                <h3>Step 3: Start Using the Tools</h3>
+                <p>Once configured, you can ask ChatGPT or your MCP client to perform audio operations. For example:</p>
+                <ul style="margin-left: 24px; margin-top: 12px; color: #333; line-height: 1.8;">
+                    <li>"Open the audio editor with this file"</li>
+                    <li>"Convert this audio to MP3"</li>
+                    <li>"Trim the first 30 seconds of this audio"</li>
+                    <li>"Separate the vocals from this song"</li>
+                    <li>"Detect the BPM and key of this track"</li>
+                </ul>
+            </div>
+            
+            <div class="quickstart-step">
+                <h3>Step 4: Explore the Tools</h3>
+                <p>Browse the tools below to see all available operations. Tools marked with <span class="ui-badge">MCP + UI</span> will open an interactive editor in ChatGPT, while others perform operations directly.</p>
+            </div>
         </div>
         
         <!-- Tools with UI -->

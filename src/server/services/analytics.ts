@@ -51,8 +51,10 @@ function generateClientId(): string {
  */
 function generateStableClientId(sessionId: string): string {
   // Extract timestamp from sessionId if available (for better GA4 compatibility)
-  // Session IDs typically have format: chatgpt_session_{timestamp}_{random}
-  // or: openai/widgetSessionId (which is a UUID)
+  // Session IDs typically have format:
+  // - chatgpt_session_{timestamp}_{random} (ChatGPT)
+  // - mcp_session_{timestamp}_{random} (other MCP clients)
+  // - openai/widgetSessionId (which is a UUID from ChatGPT)
   const timestampMatch = sessionId.match(/\d{10,13}/);
   const baseTimestamp = timestampMatch ? timestampMatch[0].substring(0, 13) : Date.now().toString();
   
