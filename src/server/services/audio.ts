@@ -33,7 +33,6 @@ console.log("process.env.AWS_REGION", process.env.AWS_REGION);
 
 /* ----------------------------- IMPORTS ----------------------------- */
 import fs from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import ffmpeg from "fluent-ffmpeg";
 import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
@@ -48,7 +47,7 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 // Configure ffprobe path - handle serverless environments (Vercel/Lambda)
 // On Vercel, skip @ffprobe-installer/ffprobe wrapper and use linux-x64 directly
-let ffprobePath: string;
+let ffprobePath: string | undefined;
 if (process.env.VERCEL) {
   // Vercel runs on Linux, so use linux-x64 directly to avoid module resolution issues
   try {
@@ -148,6 +147,10 @@ if (process.env.VERCEL) {
       throw new Error(`Failed to configure ffprobe: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+}
+
+if (!ffprobePath) {
+  throw new Error("Failed to configure ffprobe: path was not resolved");
 }
 ffmpeg.setFfprobePath(ffprobePath);
 
