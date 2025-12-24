@@ -3195,6 +3195,19 @@ export function AudioEditor() {
           </div>
         )}
       </div>
+
+      {/* Feature Request Hint */}
+      <div className="feature-hint">
+        Feature missing?{" "}
+        <a
+          href="https://docs.google.com/forms/d/e/1FAIpQLSejuKwgGM4VEKtzN2IXJ7AoxQym20KO4t-Z7xlBxjkMMLVLQg/viewform?usp=publish-editor"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="feature-hint-link"
+        >
+          Suggest it here
+        </a>
+      </div>
     </div>
   );
 }
