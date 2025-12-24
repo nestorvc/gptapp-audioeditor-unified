@@ -2594,12 +2594,12 @@ export function AudioEditor() {
           )}
         </button>
 
-        <div className={`track-name-marquee ${true ? 'loading' : ''}`}>
+        <div className={`track-name-marquee ${isDetectingBPMKey ? 'loading' : ''}`}>
           <div 
             ref={marqueeContentRef}
-            className={`marquee-content ${true ? 'loading' : ''}`}
+            className={`marquee-content ${isDetectingBPMKey ? 'loading' : ''}`}
           >
-            {true ? (
+            {isDetectingBPMKey ? (
               <>
                 <span className="spinner" aria-hidden="true" />
                 <span className="loading-text">Loading attributes...</span>
