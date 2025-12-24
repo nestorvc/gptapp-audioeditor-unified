@@ -10,7 +10,7 @@
     "dev:widgets": "vite",
     "build": "pnpm run build:server && pnpm run build:widgets",
     "build:server": "tsc && shx chmod +x build/index.js",
-    "build:widgets": "vite build",
+    "build:widgets": "shx rm -rf dist/widgets && vite build",
     "start": "node build/index.js",
     "prepare": "pnpm run build"
   },
