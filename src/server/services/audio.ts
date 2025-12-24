@@ -33,6 +33,7 @@ console.log("process.env.AWS_REGION", process.env.AWS_REGION);
 
 /* ----------------------------- IMPORTS ----------------------------- */
 import fs from "node:fs";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import ffmpeg from "fluent-ffmpeg";
 import { PutObjectCommand, type PutObjectCommandInput, S3Client, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
@@ -40,12 +41,115 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import * as EssentiaModule from "essentia.js";
 
 /* ----------------------------- FFMPEG CONFIGURATION ----------------------------- */
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+
+// Configure ffprobe path - handle serverless environments (Vercel/Lambda)
+// On Vercel, skip @ffprobe-installer/ffprobe wrapper and use linux-x64 directly
+let ffprobePath: string;
+if (process.env.VERCEL) {
+  // Vercel runs on Linux, so use linux-x64 directly to avoid module resolution issues
+  try {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    ffprobePath = require.resolve("@ffprobe-installer/linux-x64/ffprobe");
+    console.log("[FFmpeg] Using linux-x64 ffprobe on Vercel:", ffprobePath);
+  } catch (requireError) {
+    // Fallback to file system path resolution for Vercel
+    const searchPaths = [
+      path.resolve(projectRoot, "node_modules/@ffprobe-installer/linux-x64/ffprobe"),
+      path.resolve(projectRoot, "node_modules/.pnpm/@ffprobe-installer+linux-x64@5.2.0/node_modules/@ffprobe-installer/linux-x64/ffprobe"),
+      ...(() => {
+        const pnpmDir = path.resolve(projectRoot, "node_modules/.pnpm");
+        if (fs.existsSync(pnpmDir)) {
+          try {
+            const entries = fs.readdirSync(pnpmDir);
+            const linuxX64Dirs = entries.filter(e => e.startsWith("@ffprobe-installer+linux-x64@"));
+            return linuxX64Dirs.map(dir => 
+              path.resolve(pnpmDir, dir, "node_modules/@ffprobe-installer/linux-x64/ffprobe")
+            );
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      })(),
+    ];
+
+    let found = false;
+    for (const searchPath of searchPaths) {
+      if (fs.existsSync(searchPath)) {
+        ffprobePath = searchPath;
+        console.log("[FFmpeg] Using linux-x64 ffprobe from filesystem on Vercel:", ffprobePath);
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      throw new Error(`Could not find ffprobe binary on Vercel. Searched: ${searchPaths.join(", ")}`);
+    }
+  }
+} else {
+  // Local development: try @ffprobe-installer/ffprobe first, then fallback
+  try {
+    const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
+    ffprobePath = (ffprobeInstaller.default || ffprobeInstaller).path;
+    console.log("[FFmpeg] Using ffprobe from @ffprobe-installer/ffprobe:", ffprobePath);
+  } catch (error) {
+    // Fallback for serverless environments: try to resolve linux-x64 directly
+    console.warn("[FFmpeg] Failed to load @ffprobe-installer/ffprobe, trying linux-x64 fallback:", error instanceof Error ? error.message : String(error));
+    try {
+      const { createRequire } = await import("node:module");
+      const require = createRequire(import.meta.url);
+      try {
+        ffprobePath = require.resolve("@ffprobe-installer/linux-x64/ffprobe");
+        console.log("[FFmpeg] Using linux-x64 ffprobe via require.resolve:", ffprobePath);
+      } catch (requireError) {
+        // Fallback to file system path resolution - search common locations
+        const searchPaths = [
+          path.resolve(projectRoot, "node_modules/@ffprobe-installer/linux-x64/ffprobe"),
+          path.resolve(projectRoot, "node_modules/.pnpm/@ffprobe-installer+linux-x64@5.2.0/node_modules/@ffprobe-installer/linux-x64/ffprobe"),
+          ...(() => {
+            const pnpmDir = path.resolve(projectRoot, "node_modules/.pnpm");
+            if (fs.existsSync(pnpmDir)) {
+              try {
+                const entries = fs.readdirSync(pnpmDir);
+                const linuxX64Dirs = entries.filter(e => e.startsWith("@ffprobe-installer+linux-x64@"));
+                return linuxX64Dirs.map(dir => 
+                  path.resolve(pnpmDir, dir, "node_modules/@ffprobe-installer/linux-x64/ffprobe")
+                );
+              } catch {
+                return [];
+              }
+            }
+            return [];
+          })(),
+        ];
+
+        let found = false;
+        for (const searchPath of searchPaths) {
+          if (fs.existsSync(searchPath)) {
+            ffprobePath = searchPath;
+            console.log("[FFmpeg] Using linux-x64 ffprobe from filesystem:", ffprobePath);
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) {
+          throw new Error(`Could not find ffprobe binary. Searched: ${searchPaths.join(", ")}`);
+        }
+      }
+    } catch (fallbackError) {
+      console.error("[FFmpeg] Fallback also failed:", fallbackError);
+      throw new Error(`Failed to configure ffprobe: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+ffmpeg.setFfprobePath(ffprobePath);
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const DEFAULT_TMP_PREFIX = "audio";
