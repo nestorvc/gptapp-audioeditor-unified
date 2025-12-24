@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Terms of Service for Audio Console">
+    
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96x96.png">
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/images/apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="/images/apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/images/apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/images/apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/images/apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/images/apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-icon-180x180.png">
+    <link rel="apple-touch-icon" href="/images/apple-icon.png">
+    
+    <!-- Android Icons -->
+    <link rel="icon" type="image/png" sizes="36x36" href="/images/android-icon-36x36.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="/images/android-icon-48x48.png">
+    <link rel="icon" type="image/png" sizes="72x72" href="/images/android-icon-72x72.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/images/android-icon-96x96.png">
+    <link rel="icon" type="image/png" sizes="144x144" href="/images/android-icon-144x144.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/images/android-icon-192x192.png">
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/images/ms-icon-144x144.png">
+    <meta name="msapplication-config" content="/images/browserconfig.xml">
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/images/manifest.json">
+    
+    <title>Terms of Service - Audio Console</title>
+    <style>
+        @font-face {
+            font-family: 'Gilroy';
+            src: url('/fonts/Gilroy-Regular.otf') format('opentype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        
+        @font-face {
+            font-family: 'Gilroy';
+            src: url('/fonts/Gilroy-Bold.otf') format('opentype');
+            font-weight: 700;
+            font-style: normal;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+        
+        .diagonal-bg {
+            position: fixed;
+            top: -150px;
+            left: -120px;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: linear-gradient(151deg, #FF6B35 0%, #FF6B35 50%, #FFFFFF 50%, #FFFFFF 100%);
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 20px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header {
+            margin-bottom: 40px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s;
+        }
+        
+        .back-link:hover {
+            color: #000;
+        }
+        
+        .back-link::before {
+            content: '← ';
+            margin-right: 4px;
+        }
+        
+        h1 {
+            font-size: 48px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 40px;
+        }
+        
+        .content {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            line-height: 1.8;
+            color: #333;
+        }
+        
+        .content p {
+            margin-bottom: 20px;
+        }
+        
+        .content h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 16px;
+            color: #1a1a1a;
+        }
+        
+        .content h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 24px;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        
+        .content ul {
+            margin-left: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .content li {
+            margin-bottom: 8px;
+        }
+        
+        footer {
+            margin-top: 60px;
+            padding-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        footer a {
+            color: #666;
+            text-decoration: none;
+            margin: 0 12px;
+            transition: color 0.3s;
+        }
+        
+        footer a:hover {
+            color: #FF6B35;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 40px 15px;
+            }
+            
+            h1 {
+                font-size: 36px;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 32px;
+            }
+            
+            .content {
+                padding: 20px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="diagonal-bg"></div>
+    
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-link">Back to Home</a>
+            <h1>Terms of Service</h1>
+        </div>
+        
+        <div class="content">
+            <p>
+                Welcome to Audio Console. These Terms of Service ("Terms") govern your access to and use of Audio Console, an audio editing service that provides tools for trimming, converting, editing, and processing audio files. By accessing or using Audio Console, you agree to be bound by these Terms.
+            </p>
+            
+            <h2>Acceptance of Terms</h2>
+            <p>
+                By accessing or using Audio Console, whether through our website, ChatGPT integration, or any other platform, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy. If you do not agree to these Terms, you may not use Audio Console.
+            </p>
+            
+            <h2>Description of Service</h2>
+            <p>
+                Audio Console is an audio processing service that provides the following capabilities:
+            </p>
+            <ul>
+                <li>Audio trimming and editing (custom start/end points, fade in/out effects)</li>
+                <li>Audio format conversion (MP3, WAV, FLAC, OGG, M4A, M4R)</li>
+                <li>Vocal separation (separating vocals from instrumental tracks)</li>
+                <li>Vocal extraction and removal</li>
+                <li>BPM (beats per minute) and musical key detection</li>
+                <li>Dual-track audio processing</li>
+            </ul>
+            <p>
+                Audio Console is available as a Model Context Protocol (MCP) server and can be accessed through ChatGPT and other compatible platforms.
+            </p>
+            
+            <h2>User Responsibilities</h2>
+            
+            <h3>Eligibility</h3>
+            <p>
+                You must be at least 13 years old to use Audio Console. By using the service, you represent and warrant that you are at least 13 years old and have the legal capacity to enter into these Terms.
+            </p>
+            
+            <h3>Acceptable Use</h3>
+            <p>
+                You agree to use Audio Console only for lawful purposes and in accordance with these Terms. You agree NOT to:
+            </p>
+            <ul>
+                <li>Upload or process audio files that infringe on copyrights, trademarks, or other intellectual property rights</li>
+                <li>Upload or process audio files containing illegal, harmful, or offensive content</li>
+                <li>Upload files larger than 500MB (our current file size limit)</li>
+                <li>Attempt to reverse engineer, decompile, or disassemble the service</li>
+                <li>Use the service to violate any applicable laws or regulations</li>
+                <li>Interfere with or disrupt the service or servers connected to the service</li>
+                <li>Use automated systems or bots to access the service without permission</li>
+                <li>Attempt to gain unauthorized access to any part of the service</li>
+            </ul>
+            
+            <h3>Content Ownership and Rights</h3>
+            <p>
+                You retain all rights to audio files you upload. By uploading audio files, you represent and warrant that:
+            </p>
+            <ul>
+                <li>You own the audio files or have obtained all necessary rights and permissions to use and process them</li>
+                <li>Your use of the audio files does not violate any third-party rights</li>
+                <li>You have the right to grant us permission to process and temporarily store your audio files</li>
+            </ul>
+            
+            <h2>Service Limitations</h2>
+            
+            <h3>File Size Limits</h3>
+            <p>
+                Audio files must not exceed 500MB in size. Files exceeding this limit will be rejected.
+            </p>
+            
+            <h3>Supported Formats</h3>
+            <p>
+                Audio Console supports common audio formats including MP3, WAV, FLAC, OGG, M4A, M4R, AAC, and WebM. We cannot guarantee processing of unsupported or corrupted audio files.
+            </p>
+            
+            <h3>Service Availability</h3>
+            <p>
+                We strive to maintain service availability but do not guarantee uninterrupted or error-free service. The service may be temporarily unavailable due to maintenance, updates, or unforeseen circumstances. We are not liable for any loss or damage resulting from service unavailability.
+            </p>
+            
+            <h3>Processing Accuracy</h3>
+            <p>
+                While we use industry-standard tools and services, we cannot guarantee perfect accuracy for all audio processing operations, including vocal separation, BPM detection, or key detection. Results may vary depending on the source audio quality and characteristics.
+            </p>
+            
+            <h2>Third-Party Services</h2>
+            <p>
+                Audio Console relies on third-party services to provide functionality:
+            </p>
+            <ul>
+                <li><strong>AWS S3:</strong> For storing processed audio files</li>
+                <li><strong>LALAL.AI:</strong> For vocal separation features</li>
+                <li><strong>Google Analytics:</strong> For usage analytics</li>
+                <li><strong>ChatGPT/OpenAI:</strong> As a platform for accessing the service</li>
+            </ul>
+            <p>
+                Your use of these third-party services is also subject to their respective terms of service and privacy policies. We are not responsible for the actions, policies, or practices of these third parties.
+            </p>
+            
+            <h2>Intellectual Property</h2>
+            
+            <h3>Our Intellectual Property</h3>
+            <p>
+                Audio Console, including its design, functionality, code, and documentation, is protected by copyright, trademark, and other intellectual property laws. All rights not expressly granted to you are reserved by us.
+            </p>
+            
+            <h3>Your Content</h3>
+            <p>
+                You retain all ownership rights to audio files you upload. We do not claim ownership of your audio content. However, by using the service, you grant us a limited, non-exclusive license to:
+            </p>
+            <ul>
+                <li>Process your audio files to provide the requested services</li>
+                <li>Temporarily store your audio files on our servers and AWS S3</li>
+                <li>Generate processed output files based on your requests</li>
+            </ul>
+            <p>
+                This license terminates when you delete your files or when files are automatically deleted according to our retention policies.
+            </p>
+            
+            <h2>Data Storage and Deletion</h2>
+            <p>
+                Processed audio files are stored temporarily on AWS S3 and are subject to automatic deletion based on our retention policies. We are not responsible for maintaining copies of your processed files indefinitely. You are responsible for downloading and saving any processed files you wish to keep.
+            </p>
+            
+            <h2>Disclaimer of Warranties</h2>
+            <p>
+                Audio Console is provided "AS IS" and "AS AVAILABLE" without warranties of any kind, either express or implied. We disclaim all warranties, including but not limited to:
+            </p>
+            <ul>
+                <li>Warranties of merchantability and fitness for a particular purpose</li>
+                <li>Warranties that the service will be uninterrupted, secure, or error-free</li>
+                <li>Warranties regarding the accuracy, reliability, or quality of processed audio files</li>
+                <li>Warranties that defects will be corrected</li>
+            </ul>
+            
+            <h2>Limitation of Liability</h2>
+            <p>
+                To the maximum extent permitted by law, Audio Console and its operators shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred directly or indirectly, or any loss of data, use, goodwill, or other intangible losses resulting from:
+            </p>
+            <ul>
+                <li>Your use or inability to use the service</li>
+                <li>Any unauthorized access to or use of our servers or data</li>
+                <li>Any errors or omissions in the service</li>
+                <li>Any loss or damage to audio files during processing or storage</li>
+                <li>Any interruption or cessation of the service</li>
+            </ul>
+            <p>
+                Our total liability for any claims arising from or related to the service shall not exceed the amount you paid to use the service (which is currently $0, as the service is free).
+            </p>
+            
+            <h2>Indemnification</h2>
+            <p>
+                You agree to indemnify, defend, and hold harmless Audio Console and its operators from any claims, damages, losses, liabilities, and expenses (including attorneys' fees) arising from:
+            </p>
+            <ul>
+                <li>Your use of the service</li>
+                <li>Your violation of these Terms</li>
+                <li>Your violation of any third-party rights, including copyright or intellectual property rights</li>
+                <li>Any audio content you upload or process</li>
+            </ul>
+            
+            <h2>Termination</h2>
+            <p>
+                We reserve the right to terminate or suspend your access to Audio Console at any time, with or without cause or notice, for any reason, including if you breach these Terms. Upon termination, your right to use the service will immediately cease.
+            </p>
+            <p>
+                You may stop using Audio Console at any time. Files stored on our servers will be deleted according to our retention policies.
+            </p>
+            
+            <h2>Changes to Terms</h2>
+            <p>
+                We reserve the right to modify these Terms at any time. We will notify users of material changes by posting the updated Terms on this page and updating the "Last updated" date. Your continued use of Audio Console after such modifications constitutes acceptance of the updated Terms.
+            </p>
+            
+            <h2>Severability</h2>
+            <p>
+                If any provision of these Terms is found to be unenforceable or invalid, that provision will be limited or eliminated to the minimum extent necessary, and the remaining provisions will remain in full force and effect.
+            </p>
+            
+            <h2>Entire Agreement</h2>
+            <p>
+                These Terms, together with our Privacy Policy, constitute the entire agreement between you and Audio Console regarding the use of the service and supersede all prior agreements and understandings.
+            </p>
+            
+            <h2>Governing Law</h2>
+            <p>
+                These Terms shall be governed by and construed in accordance with the laws of Mexico, without regard to its conflict of law provisions. Any disputes arising from these Terms or your use of Audio Console shall be subject to the exclusive jurisdiction of the competent courts of Mexico.
+            </p>
+            
+            <h2>Contact Information</h2>
+            <p>
+                If you have any questions about these Terms of Service, please contact us at:
+            </p>
+            <p>
+                Email: audioconsole.app@gmail.com<br>
+                Website: https://www.audioconsole.app
+            </p>
+            
+            <p style="margin-top: 32px; font-size: 14px; color: #666;">
+                <em>Last updated: January 2025</em>
+            </p>
+        </div>
+        
+        <footer>
+            <a href="/">Home</a>
+            <span>|</span>
+            <a href="/privacy-policy.html">Privacy Policy</a>
+            <span>|</span>
+            <a href="/terms.html">Terms of Service</a>
+        </footer>
+    </div>
+</body>
+</html>
+
