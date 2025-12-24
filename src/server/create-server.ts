@@ -322,7 +322,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "Audio editor displayed",
         "openai/fileParams": ["audioFile"],
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioFile, audioUrl: providedAudioUrl } = z
@@ -399,7 +403,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "Ringtone editor displayed",
         "openai/fileParams": ["audioFile"],
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioFile, audioUrl: providedAudioUrl } = z
@@ -484,7 +492,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoking": "Converting audio format",
         "openai/toolInvocation/invoked": "Audio converted",
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioUrl, format, trackName } = z
@@ -609,7 +621,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoking": "Trimming first 30 seconds",
         "openai/toolInvocation/invoked": "First 30 seconds trimmed and ready",
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioUrl, format, trackName } = z
@@ -735,7 +751,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoking": "Trimming last 30 seconds",
         "openai/toolInvocation/invoked": "Last 30 seconds trimmed and ready",
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioUrl, format, trackName } = z
@@ -867,7 +887,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "Voice and music tracks separated",
         "openai/fileParams": ["audioFile"],
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioFile, audioUrl: providedAudioUrl, trackName } = z
@@ -1014,7 +1038,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "Vocals removed, instrumental track ready",
         "openai/fileParams": ["audioFile"],
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioFile, audioUrl: providedAudioUrl, trackName } = z
@@ -1153,7 +1181,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "Vocals extracted, vocal track ready",
         "openai/fileParams": ["audioFile"],
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioFile, audioUrl: providedAudioUrl, trackName } = z
@@ -1287,7 +1319,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "BPM and key detected",
         "openai/fileParams": ["audioFile"],
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams) => {
       const { audioFile, audioUrl: providedAudioUrl } = z
@@ -1416,7 +1452,11 @@ export const createServer = () => {
         "openai/toolInvocation/invoked": "Audio download link shared",
         "openai/widgetAccessible": true
       },
-      annotations: { readOnlyHint: true },
+      annotations: { 
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
     },
     async (rawParams: any) => {
       const { downloadUrl, fileName, format } = rawParams;
