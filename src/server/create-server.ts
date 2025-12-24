@@ -160,6 +160,8 @@ function loadWidgetHtml(componentName: string): string {
     );
   }
   const js = fs.readFileSync(jsPath, "utf8");
+  const jsStats = fs.statSync(jsPath);
+  const jsModifiedTime = jsStats.mtime.toISOString();
 
   const cssPath = path.join(ASSETS_DIR, `${componentName}.css`);
   const css = (() => {
@@ -169,12 +171,31 @@ function loadWidgetHtml(componentName: string): string {
       return "";
     }
   })();
+  const cssStats = (() => {
+    try {
+      return fs.statSync(cssPath);
+    } catch {
+      return null;
+    }
+  })();
+  const cssModifiedTime = cssStats?.mtime.toISOString() ?? "N/A";
+
+  // Log file info for debugging
+  console.log(`[Widget Load] Loading ${componentName}:`, {
+    jsPath,
+    jsSize: js.length,
+    jsModified: jsModifiedTime,
+    cssPath,
+    cssSize: css.length,
+    cssModified: cssModifiedTime,
+  });
 
   // Inject API base URL, DEBUG flag, and Google Analytics ID from environment variables (for production)
   const debugFlag = process.env.DEBUG ?? "true"; // Default to true (logging enabled)
   const googleAnalyticsId = process.env.GOOGLE_ANALYTICS_ID ?? null;
   
   const html = `
+<!-- Widget Build Info: JS=${jsModifiedTime}, CSS=${cssModifiedTime} -->
 <div id="${componentName}-root"></div>
 ${css ? `<style>${css}</style>` : ""}
 <script>window.__API_BASE_URL__ = ${JSON.stringify(apiBaseUrl)};</script>
