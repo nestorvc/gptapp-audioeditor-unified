@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="MCP Reference - Audio Console Tools Documentation">
+    
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96x96.png">
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/images/apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="/images/apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/images/apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/images/apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/images/apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/images/apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-icon-180x180.png">
+    <link rel="apple-touch-icon" href="/images/apple-icon.png">
+    
+    <!-- Android Icons -->
+    <link rel="icon" type="image/png" sizes="36x36" href="/images/android-icon-36x36.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="/images/android-icon-48x48.png">
+    <link rel="icon" type="image/png" sizes="72x72" href="/images/android-icon-72x72.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/images/android-icon-96x96.png">
+    <link rel="icon" type="image/png" sizes="144x144" href="/images/android-icon-144x144.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/images/android-icon-192x192.png">
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/images/ms-icon-144x144.png">
+    <meta name="msapplication-config" content="/images/browserconfig.xml">
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/images/manifest.json">
+    
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y32D6TPWCR"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-Y32D6TPWCR');
+    </script>
+    
+    <title>MCP Reference - Audio Console</title>
+    <style>
+        @font-face {
+            font-family: 'Gilroy';
+            src: url('/fonts/Gilroy-Regular.otf') format('opentype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        
+        @font-face {
+            font-family: 'Gilroy';
+            src: url('/fonts/Gilroy-Bold.otf') format('opentype');
+            font-weight: 700;
+            font-style: normal;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            background: #FFFFFF;
+        }
+        
+        .diagonal-bg {
+            position: fixed;
+            top: -150px;
+            left: -120px;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: linear-gradient(151deg, #FF6B35 0%, #FF6B35 50%, #FFFFFF 50%, #FFFFFF 100%);
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        
+        .logo {
+            margin-bottom: 20px;
+        }
+        
+        .logo img {
+            height: 68px;
+            width: auto;
+            display: block;
+            margin: 0 auto;
+            border-radius: 8px;
+        }
+        
+        h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            line-height: 1.2;
+            color: #1a1a1a;
+        }
+        
+        .subtitle {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 32px;
+            line-height: 1.5;
+        }
+        
+        .intro {
+            background: #f8f9fa;
+            border-left: 4px solid #FF6B35;
+            padding: 24px;
+            margin-bottom: 40px;
+            border-radius: 8px;
+        }
+        
+        .intro p {
+            font-size: 16px;
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        
+        .intro p:last-child {
+            margin-bottom: 0;
+        }
+        
+        .section {
+            margin-bottom: 60px;
+        }
+        
+        .section-title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: #1a1a1a;
+            border-bottom: 2px solid #FF6B35;
+            padding-bottom: 12px;
+        }
+        
+        .tool-card {
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .tool-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: #FF6B35;
+            margin-bottom: 12px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .tool-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 12px;
+        }
+        
+        .tool-description {
+            font-size: 16px;
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .tool-params {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .tool-params h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 12px;
+        }
+        
+        .param-item {
+            margin-bottom: 12px;
+            padding-left: 16px;
+            border-left: 3px solid #FF6B35;
+        }
+        
+        .param-name {
+            font-weight: 600;
+            color: #1a1a1a;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .param-type {
+            color: #666;
+            font-size: 14px;
+            font-style: italic;
+        }
+        
+        .param-description {
+            color: #333;
+            font-size: 14px;
+            margin-top: 4px;
+            line-height: 1.5;
+        }
+        
+        .ui-badge {
+            display: inline-block;
+            background: #4285F4;
+            color: #FFFFFF;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 12px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 32px;
+            color: #4285F4;
+            text-decoration: none;
+            font-size: 16px;
+            transition: opacity 0.3s;
+        }
+        
+        .back-link:hover {
+            opacity: 0.8;
+            text-decoration: underline;
+        }
+        
+        footer {
+            margin-top: 80px;
+            padding-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        footer a {
+            color: #666;
+            text-decoration: none;
+            margin: 0 12px;
+            transition: color 0.3s;
+        }
+        
+        footer a:hover {
+            color: #FF6B35;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 36px;
+            }
+            
+            .subtitle {
+                font-size: 18px;
+            }
+            
+            .section-title {
+                font-size: 28px;
+            }
+            
+            .tool-card {
+                padding: 20px;
+            }
+            
+            .container {
+                padding: 20px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="diagonal-bg"></div>
+    
+    <div class="container">
+        <a href="/" class="back-link">← Back to Home</a>
+        
+        <div class="header">
+            <div class="logo">
+                <img src="/images/audioconsole-logo.jpeg" alt="Audio Console Logo">
+            </div>
+            
+            <h1>MCP Reference</h1>
+            <p class="subtitle">Complete documentation for Audio Console MCP tools</p>
+        </div>
+        
+        <div class="intro">
+            <p><strong>What is MCP?</strong> MCP (Model Context Protocol) is a protocol that allows AI assistants like ChatGPT to interact with external tools and services. Audio Console provides a set of MCP tools for audio editing, conversion, and analysis.</p>
+            <p><strong>How to use:</strong> These tools are automatically available when Audio Console is configured as an MCP server. In ChatGPT and other MCP-compatible clients, you can ask the AI to perform audio operations, and it will use these tools automatically.</p>
+            <p><strong>UI Tools:</strong> Some tools open an interactive UI widget within ChatGPT, allowing you to visually edit audio with waveform visualization, trim controls, and fade effects. Other tools perform operations directly without opening a UI.</p>
+        </div>
+        
+        <!-- Tools with UI -->
+        <div class="section">
+            <h2 class="section-title">Tools with UI <span class="ui-badge">MCP + UI</span></h2>
+            <p style="margin-bottom: 24px; color: #666; font-size: 16px;">These tools open an interactive widget within ChatGPT and other MCP clients that support UI rendering. They provide visual waveform editing, trim controls, and real-time preview.</p>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.open_audio_editor</div>
+                <div class="tool-title">Open Audio Editor</div>
+                <div class="tool-description">
+                    Opens an interactive audio editor widget for trimming, fading, and format conversion. Supports MP3, WAV, FLAC, OGG, M4A, and M4R formats. Use this for custom trim points, fade adjustments, or when you want visual waveform editing. The editor provides dual-track processing for vocals and music separation.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioFile</div>
+                        <div class="param-type">Object (optional)</div>
+                        <div class="param-description">Audio file uploaded by the user in the chat. Contains download_url and file_id. Use this when the user attaches an audio file.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (optional)</div>
+                        <div class="param-description">Public HTTPS URL to an audio file. Use this when the user provides a direct link to an audio file.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.open_ringtone_editor</div>
+                <div class="tool-title">Open Ringtone Editor</div>
+                <div class="tool-description">
+                    Opens a specialized ringtone editor widget optimized for creating ringtones. Same UI as the audio editor but with format options optimized for iPhone (M4R) and Android (OGG). Use this specifically for ringtones. Best for audio clips 30 seconds or less.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioFile</div>
+                        <div class="param-type">Object (optional)</div>
+                        <div class="param-description">Audio file uploaded by the user in the chat. Contains download_url and file_id. Use this when the user attaches an audio file.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (optional)</div>
+                        <div class="param-description">Public HTTPS URL to an audio file. Use this when the user provides a direct link to an audio file.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tools without UI -->
+        <div class="section">
+            <h2 class="section-title">Direct Operation Tools</h2>
+            <p style="margin-bottom: 24px; color: #666; font-size: 16px;">These tools perform operations directly without opening a UI. They process audio and return results immediately. Perfect for automated workflows and batch processing.</p>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.convert_from_url</div>
+                <div class="tool-title">Convert Audio Format</div>
+                <div class="tool-description">
+                    Converts an audio file from a public URL to a different format without editing. Supported formats: MP3, WAV, FLAC, OGG, M4A, M4R. Use this for simple format conversion only. For editing, use audio.open_audio_editor instead.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (required)</div>
+                        <div class="param-description">Public HTTPS URL of the audio to convert. Example: https://cdn.example.com/audio/song.wav</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">format</div>
+                        <div class="param-type">Enum (required)</div>
+                        <div class="param-description">Target format: mp3, wav, flac, ogg, m4a, m4r</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">trackName</div>
+                        <div class="param-type">String (optional, max 80 chars)</div>
+                        <div class="param-description">Optional display name for the exported file. Example: Session_Mix</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.trim_start_of_audio</div>
+                <div class="tool-title">Trim Start of Audio</div>
+                <div class="tool-description">
+                    Extracts exactly the first 30 seconds of an audio file with automatic fade in/out effects. Use this for quick intro extraction. Requires audio to be at least 30 seconds long. For custom trim points, use audio.open_audio_editor instead.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (required)</div>
+                        <div class="param-description">Public HTTPS URL of the audio file. Example: https://cdn.example.com/audio/song.mp3</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">format</div>
+                        <div class="param-type">Enum (optional)</div>
+                        <div class="param-description">Target audio format. Supported: mp3, wav, flac, ogg, m4a, m4r. Defaults to mp3.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">trackName</div>
+                        <div class="param-type">String (optional, max 80 chars)</div>
+                        <div class="param-description">Optional display name for the exported file. Example: Intro_30s</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.trim_end_of_audio</div>
+                <div class="tool-title">Trim End of Audio</div>
+                <div class="tool-description">
+                    Extracts exactly the last 30 seconds of an audio file with automatic fade in/out effects. Use this for quick outro extraction. Requires audio to be at least 30 seconds long. For custom trim points, use audio.open_audio_editor instead.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (required)</div>
+                        <div class="param-description">Public HTTPS URL of the audio file. Example: https://cdn.example.com/audio/song.mp3</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">format</div>
+                        <div class="param-type">Enum (optional)</div>
+                        <div class="param-description">Target audio format. Supported: mp3, wav, flac, ogg, m4a, m4r. Defaults to mp3.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">trackName</div>
+                        <div class="param-type">String (optional, max 80 chars)</div>
+                        <div class="param-description">Optional display name for the exported file. Example: Outro_30s</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.separate_voice_from_music</div>
+                <div class="tool-title">Separate Voice from Music</div>
+                <div class="tool-description">
+                    Separates vocals from music and returns both tracks (vocals and instrumental). Use this when you explicitly want both separated tracks. Works best with music that has clear vocal and instrumental separation. Uses LALAL.AI for high-quality separation.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioFile</div>
+                        <div class="param-type">Object (optional)</div>
+                        <div class="param-description">Audio file uploaded by the user in the chat. Contains download_url and file_id.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (optional)</div>
+                        <div class="param-description">Public HTTPS URL of the audio file to separate. Either audioFile or audioUrl must be provided.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">trackName</div>
+                        <div class="param-type">String (optional, max 80 chars)</div>
+                        <div class="param-description">Optional display name for the output files. Example: My_Song</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.remove_vocals</div>
+                <div class="tool-title">Remove Vocals</div>
+                <div class="tool-description">
+                    Removes vocals from audio and returns only the instrumental/background music track. Use this when you explicitly want instrumental only. Works best with music that has clear vocal and instrumental separation.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioFile</div>
+                        <div class="param-type">Object (optional)</div>
+                        <div class="param-description">Audio file uploaded by the user in the chat. Contains download_url and file_id.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (optional)</div>
+                        <div class="param-description">Public HTTPS URL of the audio file. Either audioFile or audioUrl must be provided.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">trackName</div>
+                        <div class="param-type">String (optional, max 80 chars)</div>
+                        <div class="param-description">Optional display name for the output file. Example: My_Song_Instrumental</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.extract_vocals</div>
+                <div class="tool-title">Extract Vocals</div>
+                <div class="tool-description">
+                    Extracts vocals from audio and returns only the vocal track without music. Use this when you explicitly want vocals only. Works best with music that has clear vocal and instrumental separation.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioFile</div>
+                        <div class="param-type">Object (optional)</div>
+                        <div class="param-description">Audio file uploaded by the user in the chat. Contains download_url and file_id.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (optional)</div>
+                        <div class="param-description">Public HTTPS URL of the audio file. Either audioFile or audioUrl must be provided.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">trackName</div>
+                        <div class="param-type">String (optional, max 80 chars)</div>
+                        <div class="param-description">Optional display name for the output file. Example: My_Song_Vocals</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.detect_bpm_and_key</div>
+                <div class="tool-title">Detect BPM and Key</div>
+                <div class="tool-description">
+                    Analyzes audio to detect BPM (beats per minute/tempo) and musical key. Use this for music analysis, DJ mixing, or music production purposes. This tool only provides analysis information - it does not edit or convert audio. Works best with music tracks that have clear rhythm and harmonic content.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">audioFile</div>
+                        <div class="param-type">Object (optional)</div>
+                        <div class="param-description">Audio file uploaded by the user in the chat. Contains download_url and file_id.</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">audioUrl</div>
+                        <div class="param-type">String URL (optional)</div>
+                        <div class="param-description">Public HTTPS URL of the audio file to analyze. Either audioFile or audioUrl must be provided.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-name">audio.notify_download_link_ready</div>
+                <div class="tool-title">Share Generated Audio Link</div>
+                <div class="tool-description">
+                    Notifies ChatGPT about audio download links. This tool is typically called automatically by the widget after processing completes. Use this only after the file upload is complete. Primarily used internally by the audio editor widget.
+                </div>
+                <div class="tool-params">
+                    <h4>Parameters:</h4>
+                    <div class="param-item">
+                        <div class="param-name">downloadUrl</div>
+                        <div class="param-type">String URL (required)</div>
+                        <div class="param-description">Public HTTPS URL where the generated audio can be downloaded. Example: https://downloads.example.com/audio/final.mp3</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">fileName</div>
+                        <div class="param-type">String (optional, max 120 chars)</div>
+                        <div class="param-description">Suggested file name shown to the user. Example: Final.mp3</div>
+                    </div>
+                    <div class="param-item">
+                        <div class="param-name">format</div>
+                        <div class="param-type">Enum (optional)</div>
+                        <div class="param-description">Target audio format. Supported: mp3, wav, flac, ogg, m4a, m4r</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <a href="/">Home</a>
+            <span>|</span>
+            <a href="/privacy-policy.html">Privacy Policy</a>
+            <span>|</span>
+            <a href="/terms.html">Terms of Service</a>
+            <span>|</span>
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLSejuKwgGM4VEKtzN2IXJ7AoxQym20KO4t-Z7xlBxjkMMLVLQg/viewform?usp=publish-editor" target="_blank" rel="noopener noreferrer">Feature Requests</a>
+        </footer>
+    </div>
+</body>
+</html>
+
