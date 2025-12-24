@@ -301,7 +301,7 @@ export const createServer = () => {
     {
       title: "Open Audio Editor",
       description:
-        "Use this when the user wants to edit audio interactively with trimming, fading, and format conversion. Supports MP3, WAV, FLAC, OGG, M4A, M4R formats. Use this for custom trim points, fade adjustments, or when the user wants visual waveform editing. Do not use for simple format conversion without editing - use audio.convert_from_url instead. Do not use for ringtones - use audio.open_ringtone_editor instead.",
+        "Use this when the user wants to edit audio interactively with trimming, fading, and format conversion. Supports MP3, WAV, FLAC, OGG, M4A, M4R formats. Use this for custom trim points, fade adjustments, or when the user wants visual waveform editing. Do not use for mixing multiple tracks together or simple format conversion without editing - use audio.convert_from_url instead. Do not use for ringtones - use audio.open_ringtone_editor instead.",
       inputSchema: {
         audioFile: z
           .object({
