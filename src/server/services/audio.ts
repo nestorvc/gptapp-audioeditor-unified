@@ -1160,7 +1160,7 @@ export async function processDualTrackAudio({
           .output(finalProcessedPath)
           .on("end", async () => {
             // Rename .m4a to .m4r if needed
-            if (isM4R && finalProcessedPath !== processedFilePath) {
+            if (isM4R && processedFilePath && finalProcessedPath !== processedFilePath) {
               try {
                 await fs.promises.rename(finalProcessedPath, processedFilePath);
               } catch (renameError) {
