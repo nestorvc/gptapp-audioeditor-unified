@@ -251,7 +251,8 @@ export async function trackMCPTool(
 
   // Track success/failure if result provided
   if (result) {
-    if (result.success) {
+    // Explicitly check for boolean true to avoid falsy value issues
+    if (result.success === true) {
       await sendGA4Event(
         "mcp_tool_success",
         {
@@ -263,7 +264,7 @@ export async function trackMCPTool(
         clientId,
         sessionId
       );
-    } else {
+    } else if (result.success === false) {
       await sendGA4Event(
         "mcp_tool_error",
         {
@@ -274,6 +275,13 @@ export async function trackMCPTool(
         clientId,
         sessionId
       );
+    } else {
+      // Log warning if success is not explicitly true or false
+      console.warn("[Analytics] trackMCPTool called with invalid result.success value:", {
+        toolName,
+        success: result.success,
+        resultType: typeof result.success,
+      });
     }
   }
 }
