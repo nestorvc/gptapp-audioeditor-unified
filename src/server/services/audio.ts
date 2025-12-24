@@ -319,6 +319,7 @@ async function convertAudioToFormat(inputPath: string, outputPath: string, forma
 async function trimAudioWithFade({
   inputPath,
   outputPath,
+  finalOutputPath,
   startTime,
   duration,
   fadeInDuration = 1.5,
@@ -327,6 +328,7 @@ async function trimAudioWithFade({
 }: {
   inputPath: string;
   outputPath: string;
+  finalOutputPath?: string;
   startTime: number;
   duration: number;
   fadeInDuration?: number;
@@ -336,9 +338,11 @@ async function trimAudioWithFade({
   // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
   // Then rename to .m4r after processing
   const isM4R = format === "m4r";
-  const processingPath = isM4R 
+  const targetPath = finalOutputPath || outputPath;
+  const processingPath = isM4R && outputPath.endsWith(".m4r")
     ? path.join(path.dirname(outputPath), path.basename(outputPath, ".m4r") + ".m4a")
     : outputPath;
+  const needsRename = isM4R && processingPath !== targetPath;
 
   return new Promise<void>((resolve, reject) => {
     // Ensure fade durations don't exceed the audio duration
@@ -368,9 +372,9 @@ async function trimAudioWithFade({
     command.on("error", (error: unknown) => reject(error));
     command.on("end", async () => {
       // Rename .m4a to .m4r if needed
-      if (isM4R && processingPath !== outputPath) {
+      if (needsRename) {
         try {
-          await fs.promises.rename(processingPath, outputPath);
+          await fs.promises.rename(processingPath, targetPath);
         } catch (renameError) {
           reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
           return;
