@@ -284,11 +284,11 @@ body {
   animation-play-state: paused;
 }
 
-/* Loading state - centered, no animation */
+/* Loading state - left-aligned with spinner, no animation */
 .marquee-content.loading {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   width: 100%;
   animation: none;
   gap: 8px;
