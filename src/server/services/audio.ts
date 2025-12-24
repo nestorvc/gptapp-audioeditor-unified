@@ -247,7 +247,7 @@ const AUDIO_FORMAT_CONFIG: Record<AudioExportFormat, AudioFormatConfig> = {
         .audioCodec("aac")
         .audioBitrate("192k")
         .format("mp4")
-        .outputOptions(["-movflags", "+faststart", "-vn"]),
+        .outputOptions(["-f", "mp4", "-movflags", "+faststart", "-vn"]),
   },
 };
 
@@ -290,10 +290,14 @@ async function convertAudioToFormat(inputPath: string, outputPath: string, forma
   // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
   // Then rename to .m4r after processing
   const isM4R = format === "m4r";
-  const processingPath = isM4R ? outputPath.replace(/\.m4r$/, ".m4a") : outputPath;
+  const processingPath = isM4R 
+    ? path.join(path.dirname(outputPath), path.basename(outputPath, ".m4r") + ".m4a")
+    : outputPath;
 
   return new Promise<void>((resolve, reject) => {
-    const command = configureCommand(ffmpeg(inputPath), format);
+    // For m4r, use m4a format configuration during processing
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const command = configureCommand(ffmpeg(inputPath), processingFormat);
     command.on("error", (error: unknown) => reject(error));
     command.on("end", async () => {
       // Rename .m4a to .m4r if needed
@@ -332,7 +336,9 @@ async function trimAudioWithFade({
   // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
   // Then rename to .m4r after processing
   const isM4R = format === "m4r";
-  const processingPath = isM4R ? outputPath.replace(/\.m4r$/, ".m4a") : outputPath;
+  const processingPath = isM4R 
+    ? path.join(path.dirname(outputPath), path.basename(outputPath, ".m4r") + ".m4a")
+    : outputPath;
 
   return new Promise<void>((resolve, reject) => {
     // Ensure fade durations don't exceed the audio duration
@@ -356,7 +362,9 @@ async function trimAudioWithFade({
       command = command.audioFilters(filters);
     }
 
-    command = configureCommand(command, format);
+    // For m4r, use m4a format configuration during processing
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    command = configureCommand(command, processingFormat);
     command.on("error", (error: unknown) => reject(error));
     command.on("end", async () => {
       // Rename .m4a to .m4r if needed
@@ -1152,8 +1160,9 @@ export async function processDualTrackAudio({
           command = command.audioFilters(`afade=t=out:st=${fadeOutStart}:d=${fadeOutDuration}`);
         }
 
-        // Apply format conversion
-        const formatConfig = AUDIO_FORMAT_CONFIG[format];
+        // Apply format conversion - for m4r, use m4a format configuration during processing
+        const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+        const formatConfig = AUDIO_FORMAT_CONFIG[processingFormat];
         command = formatConfig.apply(command);
 
         command
