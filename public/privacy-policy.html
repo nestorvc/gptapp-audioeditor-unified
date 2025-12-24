@@ -215,7 +215,7 @@
             
             <h3>Audio Files</h3>
             <p>
-                When you use Audio Console, you may upload audio files or provide URLs to audio files for processing. We temporarily store these files to perform the requested operations (trimming, format conversion, vocal separation, etc.). Processed audio files are stored on Amazon Web Services (AWS) S3 cloud storage.
+                When you use Audio Console, you may upload audio files or provide URLs to audio files for processing. We store these files <strong>solely for processing purposes</strong> to perform the requested operations (trimming, format conversion, vocal separation, etc.). Processed and exported audio files are stored temporarily on Amazon Web Services (AWS) S3 cloud storage and are <strong>automatically deleted after 24 hours</strong>.
             </p>
             
             <h3>Usage Information</h3>
@@ -279,14 +279,18 @@
             
             <h2>Data Storage and Retention</h2>
             <p>
-                Audio files uploaded for processing are stored temporarily:
+                Audio files are stored <strong>only for processing purposes</strong> and are subject to automatic deletion:
             </p>
             <ul>
-                <li>Uploaded files are processed and then deleted from our servers</li>
-                <li>Processed output files are stored on AWS S3 and are subject to automatic deletion based on our retention policies</li>
-                <li>Analytics data is stored by Google Analytics according to their retention policies</li>
-                <li>We do not retain audio files longer than necessary to provide the service</li>
+                <li>Uploaded source files are processed and then immediately deleted from our servers</li>
+                <li>All processed and exported audio files are stored temporarily on AWS S3</li>
+                <li><strong>All processed and exported audio files are automatically deleted after 24 hours</strong> from the time of processing</li>
+                <li>We do not retain audio files beyond the 24-hour period required for processing and download</li>
+                <li>Analytics data (metadata only, not audio content) is stored by Google Analytics according to their retention policies</li>
             </ul>
+            <p>
+                <strong>Important:</strong> You are responsible for downloading and saving any processed files you wish to keep before the 24-hour deletion period expires. We cannot recover files after they have been automatically deleted.
+            </p>
             
             <h2>Data Security</h2>
             <p>
