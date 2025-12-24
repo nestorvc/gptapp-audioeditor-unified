@@ -442,7 +442,7 @@ export const createServer = () => {
     {
       title: "Convert Audio Format",
       description:
-        "Use this when the user wants to convert an audio file from a public URL to a different format without editing. Supported formats: MP3, WAV, FLAC, OGG, M4A, M4R. Use this for simple format conversion only. Do not use if the user wants to trim, fade, or edit the audio - use audio.open_audio_editor instead. Do not use for unsupported formats.",
+        "Use this when the user wants to convert an audio file from a public URL to a different format without editing. Supported formats: MP3, WAV, FLAC, OGG, M4A, M4R. Use this for simple format conversion only. Do not use if the user wants to trim, fade, or edit the audio - use audio.open_audio_editor instead. Do not use for unsupported formats. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioUrl: z
           .string()
@@ -566,7 +566,7 @@ export const createServer = () => {
     {
       title: "Trim Start of Audio",
       description:
-        "Use this when the user wants to extract exactly the first 30 seconds of an audio file with automatic fade in/out effects. Use this for quick intro extraction. Do not use if the user wants custom trim points, different duration, or manual fade control - use audio.open_audio_editor instead. Requires audio to be at least 30 seconds long.",
+        "Use this when the user wants to extract exactly the first 30 seconds of an audio file with automatic fade in/out effects. Use this for quick intro extraction. Do not use if the user wants custom trim points, different duration, or manual fade control - use audio.open_audio_editor instead. Requires audio to be at least 30 seconds long. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioUrl: z
           .string()
@@ -692,7 +692,7 @@ export const createServer = () => {
     {
       title: "Trim End of Audio",
       description:
-        "Use this when the user wants to extract exactly the last 30 seconds of an audio file with automatic fade in/out effects. Use this for quick outro extraction. Do not use if the user wants custom trim points, different duration, or manual fade control - use audio.open_audio_editor instead. Requires audio to be at least 30 seconds long.",
+        "Use this when the user wants to extract exactly the last 30 seconds of an audio file with automatic fade in/out effects. Use this for quick outro extraction. Do not use if the user wants custom trim points, different duration, or manual fade control - use audio.open_audio_editor instead. Requires audio to be at least 30 seconds long. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioUrl: z
           .string()
@@ -819,7 +819,7 @@ export const createServer = () => {
     {
       title: "Separate Voice from Music",
       description:
-        "Use this when the user wants to separate vocals from music and get both tracks (vocals and instrumental). Use this when the user explicitly wants both separated tracks. Do not use if the user only wants vocals (use audio.extract_vocals) or only wants instrumental (use audio.remove_vocals). Works best with music that has clear vocal and instrumental separation.",
+        "Use this when the user wants to separate vocals from music and get both tracks (vocals and instrumental). Use this when the user explicitly wants both separated tracks. Do not use if the user only wants vocals (use audio.extract_vocals) or only wants instrumental (use audio.remove_vocals). Works best with music that has clear vocal and instrumental separation. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioFile: z
           .object({
@@ -966,7 +966,7 @@ export const createServer = () => {
     {
       title: "Remove Vocals",
       description:
-        "Use this when the user wants to remove vocals from audio and get only the instrumental/background music track. Use this when the user explicitly wants instrumental only. Do not use if the user wants both tracks (use audio.separate_voice_from_music) or only vocals (use audio.extract_vocals). Works best with music that has clear vocal and instrumental separation.",
+        "Use this when the user wants to remove vocals from audio and get only the instrumental/background music track. Use this when the user explicitly wants instrumental only. Do not use if the user wants both tracks (use audio.separate_voice_from_music) or only vocals (use audio.extract_vocals). Works best with music that has clear vocal and instrumental separation. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioFile: z
           .object({
@@ -1105,7 +1105,7 @@ export const createServer = () => {
     {
       title: "Extract Vocals",
       description:
-        "Use this when the user wants to extract vocals from audio and get only the vocal track without music. Use this when the user explicitly wants vocals only. Do not use if the user wants both tracks (use audio.separate_voice_from_music) or only instrumental (use audio.remove_vocals). Works best with music that has clear vocal and instrumental separation.",
+        "Use this when the user wants to extract vocals from audio and get only the vocal track without music. Use this when the user explicitly wants vocals only. Do not use if the user wants both tracks (use audio.separate_voice_from_music) or only instrumental (use audio.remove_vocals). Works best with music that has clear vocal and instrumental separation. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioFile: z
           .object({
@@ -1244,7 +1244,7 @@ export const createServer = () => {
     {
       title: "Detect BPM and Key",
       description:
-        "Use this when the user wants to analyze audio to detect BPM (beats per minute/tempo) and musical key. Use this for music analysis, DJ mixing, or music production purposes. Do not use for editing, conversion, or separation - this tool only provides analysis information. Works best with music tracks that have clear rhythm and harmonic content.",
+        "Use this when the user wants to analyze audio to detect BPM (beats per minute/tempo) and musical key. Use this for music analysis, DJ mixing, or music production purposes. Do not use for editing, conversion, or separation - this tool only provides analysis information. Works best with music tracks that have clear rhythm and harmonic content. If user didn't specify, process the most recent available audio.",
       inputSchema: {
         audioFile: z
           .object({

@@ -222,8 +222,13 @@ body {
   }
   
   /* Hide loading text on mobile, keep spinner only */
-  .loading-text {
+  .track-name-marquee .loading-text {
     display: none;
+  }
+  
+  /* Center spinner on mobile when loading */
+  .track-name-marquee.loading .marquee-content.loading {
+    justify-content: center;
   }
 }
 
@@ -287,6 +292,18 @@ body {
   width: 100%;
   animation: none;
   gap: 8px;
+}
+
+/* Spinner styling for marquee (white on black background) */
+.track-name-marquee .spinner {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--white);
+  flex-shrink: 0;
+}
+
+/* Loading text styling */
+.loading-text {
+  color: var(--white);
 }
 
 @keyframes marquee {

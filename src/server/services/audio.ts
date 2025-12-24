@@ -40,10 +40,12 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import * as EssentiaModule from "essentia.js";
 
 /* ----------------------------- FFMPEG CONFIGURATION ----------------------------- */
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 /* ----------------------------- CONSTANTS ----------------------------- */
 const DEFAULT_TMP_PREFIX = "audio";
@@ -141,6 +143,17 @@ const AUDIO_FORMAT_CONFIG: Record<AudioExportFormat, AudioFormatConfig> = {
         .outputOptions(["-movflags", "+faststart", "-vn"]),
   },
 };
+
+// generateAudioTitleAndFilename - Generates title and filename with brand text
+function generateAudioTitleAndFilename(actionTitle: string, baseName?: string | null): { title: string; filename: string } {
+  const brandText = " (Generated_by_AudioConsole.app)";
+  const title = `${actionTitle}${brandText}`;
+  // Filename should align with title: use baseName if provided, otherwise use actionTitle
+  // Convert spaces to underscores and append brand text without parentheses
+  const filenameBase = baseName ? sanitizeFileName(baseName.replace(/\.[^/.]+$/, ""), DEFAULT_TMP_PREFIX) : actionTitle.replace(/\s+/g, "_");
+  const filename = `${filenameBase}_Generated_by_AudioConsole_app`;
+  return { title, filename };
+}
 
 // sanitizeFileName - Sanitizes the file name
 function sanitizeFileName(rawName: string | undefined | null, fallback = DEFAULT_TMP_PREFIX) {
@@ -401,6 +414,7 @@ export async function finalizeLocalAudioExport({
   trackName: string;
 }): Promise<AudioExportResult> {
   let convertedPath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const { outputPath, extension, mimeType } = await transcodeLocalAudioFormat({
@@ -414,10 +428,15 @@ export async function finalizeLocalAudioExport({
       DEFAULT_TMP_PREFIX
     );
 
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename("Exported Audio", downloadBaseName);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(convertedPath, metadataPath, title);
+
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: convertedPath,
+      filePath: metadataPath,
       mimeType,
-      downloadName: downloadBaseName,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -425,18 +444,22 @@ export async function finalizeLocalAudioExport({
     return {
       downloadUrl,
       fileName,
-      trackName: downloadBaseName,
+      trackName: filename,
       format,
       extension,
     };
   } finally {
-    if (convertedPath) {
-      try {
-        await fs.promises.unlink(convertedPath);
-      } catch {
-        // ignore cleanup errors
-      }
-    }
+    await Promise.all(
+      [convertedPath, metadataPath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
   }
 }
 
@@ -452,6 +475,7 @@ export async function convertRemoteAudioToFormat({
 }): Promise<AudioExportResult> {
   let downloadedFilePath: string | null = null;
   let convertedFilePath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
@@ -468,10 +492,15 @@ export async function convertRemoteAudioToFormat({
     });
     convertedFilePath = outputPath;
 
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename("Converted Audio", trackNameBase);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(convertedFilePath, metadataPath, title);
+
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: convertedFilePath,
+      filePath: metadataPath,
       mimeType: AUDIO_FORMAT_CONFIG[format].mimeType,
-      downloadName: trackNameBase,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -480,12 +509,12 @@ export async function convertRemoteAudioToFormat({
       downloadUrl,
       fileName,
       format,
-      trackName: trackNameBase,
+      trackName: filename,
       extension,
     };
   } finally {
     await Promise.all(
-      [downloadedFilePath, convertedFilePath].map(async (filePath) => {
+      [downloadedFilePath, convertedFilePath, metadataPath].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);
@@ -512,6 +541,7 @@ export async function trimFirst30Seconds({
 }): Promise<AudioExportResult> {
   let downloadedFilePath: string | null = null;
   let trimmedFilePath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
@@ -535,10 +565,15 @@ export async function trimFirst30Seconds({
       format,
     });
 
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio (First 30s)", trackNameBase);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(trimmedFilePath, metadataPath, title);
+
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: trimmedFilePath,
+      filePath: metadataPath,
       mimeType,
-      downloadName: trackNameBase,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -547,12 +582,12 @@ export async function trimFirst30Seconds({
       downloadUrl,
       fileName,
       format,
-      trackName: trackNameBase,
+      trackName: filename,
       extension,
     };
   } finally {
     await Promise.all(
-      [downloadedFilePath, trimmedFilePath].map(async (filePath) => {
+      [downloadedFilePath, trimmedFilePath, metadataPath].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);
@@ -579,6 +614,7 @@ export async function trimLast30Seconds({
 }): Promise<AudioExportResult> {
   let downloadedFilePath: string | null = null;
   let trimmedFilePath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
@@ -616,10 +652,15 @@ export async function trimLast30Seconds({
       format,
     });
 
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio (Last 30s)", trackNameBase);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(trimmedFilePath, metadataPath, title);
+
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: trimmedFilePath,
+      filePath: metadataPath,
       mimeType,
-      downloadName: trackNameBase,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -628,12 +669,12 @@ export async function trimLast30Seconds({
       downloadUrl,
       fileName,
       format,
-      trackName: trackNameBase,
+      trackName: filename,
       extension,
     };
   } finally {
     await Promise.all(
-      [downloadedFilePath, trimmedFilePath].map(async (filePath) => {
+      [downloadedFilePath, trimmedFilePath, metadataPath].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);
@@ -670,6 +711,7 @@ export async function processAudioFromUrl({
 }): Promise<AudioExportResult> {
   let downloadedFilePath: string | null = null;
   let processedFilePath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const { filePath, originalFileName } = await downloadAudioToTempFile(audioUrl);
@@ -693,10 +735,15 @@ export async function processAudioFromUrl({
       format,
     });
 
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio", trackNameBase);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(processedFilePath, metadataPath, title);
+
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: processedFilePath,
+      filePath: metadataPath,
       mimeType,
-      downloadName: trackNameBase,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -708,12 +755,12 @@ export async function processAudioFromUrl({
       downloadUrl,
       fileName,
       format,
-      trackName: trackNameBase,
+      trackName: filename,
       extension,
     };
   } finally {
     await Promise.all(
-      [downloadedFilePath, processedFilePath].map(async (filePath) => {
+      [downloadedFilePath, processedFilePath, metadataPath].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);
@@ -788,6 +835,7 @@ export async function processAudioFromFile({
   fadeOutDuration?: number;
 }): Promise<AudioExportResult> {
   let processedFilePath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const trackNameBase = sanitizeFileName(
@@ -808,11 +856,16 @@ export async function processAudioFromFile({
       format,
     });
 
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio", trackNameBase);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(processedFilePath, metadataPath, title);
+
     // Use S3_EXPORTS_FOLDER for exported files
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: processedFilePath,
+      filePath: metadataPath,
       mimeType,
-      downloadName: trackNameBase,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -821,17 +874,21 @@ export async function processAudioFromFile({
       downloadUrl,
       fileName,
       format,
-      trackName: trackNameBase,
+      trackName: filename,
       extension,
     };
   } finally {
-    if (processedFilePath) {
-      try {
-        await fs.promises.unlink(processedFilePath);
-      } catch {
-        // ignore cleanup errors
-      }
-    }
+    await Promise.all(
+      [processedFilePath, metadataPath].map(async (filePath) => {
+        if (filePath) {
+          try {
+            await fs.promises.unlink(filePath);
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      })
+    );
   }
 }
 
@@ -868,6 +925,7 @@ export async function processDualTrackAudio({
   let vocalsTrimmedPath: string | null = null;
   let musicTrimmedPath: string | null = null;
   let processedFilePath: string | null = null;
+  let metadataPath: string | null = null;
 
   try {
     const trackNameBase = sanitizeFileName(
@@ -994,11 +1052,26 @@ export async function processDualTrackAudio({
       throw new Error("At least one track must be enabled");
     }
 
+    // Determine title based on which tracks are enabled
+    let actionTitle: string;
+    if (vocalsEnabled && musicEnabled) {
+      actionTitle = "Mixed Audio";
+    } else if (vocalsEnabled) {
+      actionTitle = "Vocals Only";
+    } else {
+      actionTitle = "Music Only";
+    }
+
+    // Add metadata with branded title
+    const { title, filename } = generateAudioTitleAndFilename(actionTitle, trackNameBase);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    await addMetadataToAudio(processedFilePath!, metadataPath, title);
+
     // Upload to S3 exports folder
     const { downloadUrl, fileName } = await uploadAudioToS3({
-      filePath: processedFilePath,
+      filePath: metadataPath,
       mimeType,
-      downloadName: trackNameBase,
+      downloadName: filename,
       extension,
       config: s3UploadConfig,
     });
@@ -1007,13 +1080,13 @@ export async function processDualTrackAudio({
       downloadUrl,
       fileName,
       format,
-      trackName: trackNameBase,
+      trackName: filename,
       extension,
     };
   } finally {
     // Clean up temp files
     await Promise.all(
-      [vocalsFilePath, musicFilePath, vocalsTrimmedPath, musicTrimmedPath, processedFilePath].map(async (filePath) => {
+      [vocalsFilePath, musicFilePath, vocalsTrimmedPath, musicTrimmedPath, processedFilePath, metadataPath].map(async (filePath) => {
         if (filePath) {
           try {
             await fs.promises.unlink(filePath);
@@ -1209,18 +1282,17 @@ export async function separateVoiceFromMusic({
 
     const mimeType = getMimeType(originalExtension);
 
-    // Add suffix to track names for LALAL.AI generated files
-    const suffix = " (Generated_by_AudioConsole.app)";
-    const vocalsBaseName = `${trackNameBase}_vocals${suffix}`;
-    const musicBaseName = `${trackNameBase}_music${suffix}`;
+    // Generate titles and filenames with brand text
+    const { title: vocalsTitle, filename: vocalsFilename } = generateAudioTitleAndFilename("Vocals Only", `${trackNameBase}_vocals`);
+    const { title: musicTitle, filename: musicFilename } = generateAudioTitleAndFilename("Music Only", `${trackNameBase}_music`);
 
     // Add metadata to audio files before uploading
     vocalsWithMetadata = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-vocals-metadata${originalExtension}`);
     musicWithMetadata = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-music-metadata${originalExtension}`);
 
     await Promise.all([
-      addMetadataToAudio(vocalsFilePath, vocalsWithMetadata, vocalsBaseName),
-      addMetadataToAudio(musicFilePath, musicWithMetadata, musicBaseName),
+      addMetadataToAudio(vocalsFilePath, vocalsWithMetadata, vocalsTitle),
+      addMetadataToAudio(musicFilePath, musicWithMetadata, musicTitle),
     ]);
 
     // Update file paths to use metadata-enhanced versions
@@ -1231,14 +1303,14 @@ export async function separateVoiceFromMusic({
       uploadAudioToS3({
         filePath: finalVocalsPath,
         mimeType,
-        downloadName: vocalsBaseName,
+        downloadName: vocalsFilename,
         extension: originalExtension,
         config: s3UploadConfig,
       }),
       uploadAudioToS3({
         filePath: finalMusicPath,
         mimeType,
-        downloadName: musicBaseName,
+        downloadName: musicFilename,
         extension: originalExtension,
         config: s3UploadConfig,
       }),
