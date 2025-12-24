@@ -296,8 +296,15 @@ body {
 
 /* Spinner styling for marquee (white on black background) */
 .track-name-marquee .spinner {
+  width: 14px;
+  height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.2);
   border-top-color: var(--white);
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0;
+  animation: spinner-rotate 0.6s linear infinite;
+  vertical-align: middle;
   flex-shrink: 0;
 }
 
