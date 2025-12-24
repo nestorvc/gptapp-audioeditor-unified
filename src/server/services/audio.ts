@@ -246,7 +246,7 @@ const AUDIO_FORMAT_CONFIG: Record<AudioExportFormat, AudioFormatConfig> = {
       command
         .audioCodec("aac")
         .audioBitrate("192k")
-        .format("m4a")
+        .format("mp4")
         .outputOptions(["-movflags", "+faststart", "-vn"]),
   },
 };
