@@ -246,7 +246,7 @@ const AUDIO_FORMAT_CONFIG: Record<AudioExportFormat, AudioFormatConfig> = {
       command
         .audioCodec("aac")
         .audioBitrate("192k")
-        .format("mp4")
+        .format("m4a")
         .outputOptions(["-movflags", "+faststart", "-vn"]),
   },
 };
@@ -287,12 +287,28 @@ function configureCommand(command: FfmpegCommand, format: AudioExportFormat) {
   
 // convertAudioToFormat - Converts audio file to specified format using ffmpeg
 async function convertAudioToFormat(inputPath: string, outputPath: string, format: AudioExportFormat) {
-await new Promise<void>((resolve, reject) => {
+  // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
+  // Then rename to .m4r after processing
+  const isM4R = format === "m4r";
+  const processingPath = isM4R ? outputPath.replace(/\.m4r$/, ".m4a") : outputPath;
+
+  return new Promise<void>((resolve, reject) => {
     const command = configureCommand(ffmpeg(inputPath), format);
     command.on("error", (error: unknown) => reject(error));
-    command.on("end", () => resolve());
-    command.save(outputPath);
-});
+    command.on("end", async () => {
+      // Rename .m4a to .m4r if needed
+      if (isM4R && processingPath !== outputPath) {
+        try {
+          await fs.promises.rename(processingPath, outputPath);
+        } catch (renameError) {
+          reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
+          return;
+        }
+      }
+      resolve();
+    });
+    command.save(processingPath);
+  });
 }
 
 // trimAudioWithFade - Trims audio and applies fade in/out effects
@@ -313,6 +329,11 @@ async function trimAudioWithFade({
   fadeOutDuration?: number;
   format: AudioExportFormat;
 }) {
+  // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
+  // Then rename to .m4r after processing
+  const isM4R = format === "m4r";
+  const processingPath = isM4R ? outputPath.replace(/\.m4r$/, ".m4a") : outputPath;
+
   return new Promise<void>((resolve, reject) => {
     // Ensure fade durations don't exceed the audio duration
     const safeFadeIn = Math.min(fadeInDuration, duration / 2);
@@ -337,8 +358,19 @@ async function trimAudioWithFade({
 
     command = configureCommand(command, format);
     command.on("error", (error: unknown) => reject(error));
-    command.on("end", () => resolve());
-    command.save(outputPath);
+    command.on("end", async () => {
+      // Rename .m4a to .m4r if needed
+      if (isM4R && processingPath !== outputPath) {
+        try {
+          await fs.promises.rename(processingPath, outputPath);
+        } catch (renameError) {
+          reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
+          return;
+        }
+      }
+      resolve();
+    });
+    command.save(processingPath);
   });
 }
   
@@ -1060,6 +1092,9 @@ export async function processDualTrackAudio({
       pipeline(Readable.fromWeb(musicResponse.body as any), fs.createWriteStream(musicFilePath)),
     ]);
 
+    // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
+    const isM4R = format === "m4r";
+    const processingExtension = isM4R ? ".m4a" : extension;
     processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
 
     if (vocalsEnabled && musicEnabled) {
@@ -1098,7 +1133,7 @@ export async function processDualTrackAudio({
       }
       const finalVocalsPath = vocalsTrimmedPath;
       const finalMusicPath = musicTrimmedPath;
-      const finalProcessedPath = processedFilePath;
+      const finalProcessedPath = isM4R ? processedFilePath.replace(/\.m4r$/, ".m4a") : processedFilePath;
       await new Promise<void>((resolve, reject) => {
         let command = ffmpeg()
           .input(finalVocalsPath)
@@ -1123,7 +1158,18 @@ export async function processDualTrackAudio({
 
         command
           .output(finalProcessedPath)
-          .on("end", () => resolve())
+          .on("end", async () => {
+            // Rename .m4a to .m4r if needed
+            if (isM4R && finalProcessedPath !== processedFilePath) {
+              try {
+                await fs.promises.rename(finalProcessedPath, processedFilePath);
+              } catch (renameError) {
+                reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
+                return;
+              }
+            }
+            resolve();
+          })
           .on("error", (err) => reject(err))
           .run();
       });
