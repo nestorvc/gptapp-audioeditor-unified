@@ -287,31 +287,11 @@ function configureCommand(command: FfmpegCommand, format: AudioExportFormat) {
   
 // convertAudioToFormat - Converts audio file to specified format using ffmpeg
 async function convertAudioToFormat(inputPath: string, outputPath: string, format: AudioExportFormat) {
-  // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
-  // Then rename to .m4r after processing
-  const isM4R = format === "m4r";
-  const processingPath = isM4R 
-    ? path.join(path.dirname(outputPath), path.basename(outputPath, ".m4r") + ".m4a")
-    : outputPath;
-
   return new Promise<void>((resolve, reject) => {
-    // For m4r, use m4a format configuration during processing
-    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
-    const command = configureCommand(ffmpeg(inputPath), processingFormat);
+    const command = configureCommand(ffmpeg(inputPath), format);
     command.on("error", (error: unknown) => reject(error));
-    command.on("end", async () => {
-      // Rename .m4a to .m4r if needed
-      if (isM4R && processingPath !== outputPath) {
-        try {
-          await fs.promises.rename(processingPath, outputPath);
-        } catch (renameError) {
-          reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
-          return;
-        }
-      }
-      resolve();
-    });
-    command.save(processingPath);
+    command.on("end", () => resolve());
+    command.save(outputPath);
   });
 }
 
@@ -319,7 +299,6 @@ async function convertAudioToFormat(inputPath: string, outputPath: string, forma
 async function trimAudioWithFade({
   inputPath,
   outputPath,
-  finalOutputPath,
   startTime,
   duration,
   fadeInDuration = 1.5,
@@ -328,22 +307,12 @@ async function trimAudioWithFade({
 }: {
   inputPath: string;
   outputPath: string;
-  finalOutputPath?: string;
   startTime: number;
   duration: number;
   fadeInDuration?: number;
   fadeOutDuration?: number;
   format: AudioExportFormat;
 }) {
-  // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
-  // Then rename to .m4r after processing
-  const isM4R = format === "m4r";
-  const targetPath = finalOutputPath || outputPath;
-  const processingPath = isM4R && outputPath.endsWith(".m4r")
-    ? path.join(path.dirname(outputPath), path.basename(outputPath, ".m4r") + ".m4a")
-    : outputPath;
-  const needsRename = isM4R && processingPath !== targetPath;
-
   return new Promise<void>((resolve, reject) => {
     // Ensure fade durations don't exceed the audio duration
     const safeFadeIn = Math.min(fadeInDuration, duration / 2);
@@ -366,23 +335,10 @@ async function trimAudioWithFade({
       command = command.audioFilters(filters);
     }
 
-    // For m4r, use m4a format configuration during processing
-    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
-    command = configureCommand(command, processingFormat);
+    command = configureCommand(command, format);
     command.on("error", (error: unknown) => reject(error));
-    command.on("end", async () => {
-      // Rename .m4a to .m4r if needed
-      if (needsRename) {
-        try {
-          await fs.promises.rename(processingPath, targetPath);
-        } catch (renameError) {
-          reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
-          return;
-        }
-      }
-      resolve();
-    });
-    command.save(processingPath);
+    command.on("end", () => resolve());
+    command.save(outputPath);
   });
 }
   
@@ -568,9 +524,12 @@ export async function finalizeLocalAudioExport({
   let metadataPath: string | null = null;
 
   try {
-    const { outputPath, extension, mimeType } = await transcodeLocalAudioFormat({
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : normalizeAudioExportFormat(format);
+    const { outputPath, extension: processingExtension, mimeType } = await transcodeLocalAudioFormat({
       inputPath: sourcePath,
-      format: normalizeAudioExportFormat(format),
+      format: processingFormat,
     });
     convertedPath = outputPath;
     
@@ -581,14 +540,15 @@ export async function finalizeLocalAudioExport({
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename("Exported Audio", downloadBaseName);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(convertedPath, metadataPath, title);
 
+    const { extension: finalExtension } = AUDIO_FORMAT_CONFIG[format];
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
       mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -597,7 +557,7 @@ export async function finalizeLocalAudioExport({
       fileName,
       trackName: filename,
       format,
-      extension,
+      extension: finalExtension,
     };
   } finally {
     await Promise.all(
@@ -637,22 +597,26 @@ export async function convertRemoteAudioToFormat({
       DEFAULT_TMP_PREFIX
     );
 
-    const { outputPath, extension } = await transcodeLocalAudioFormat({
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const { outputPath, extension: processingExtension } = await transcodeLocalAudioFormat({
       inputPath: downloadedFilePath,
-      format,
+      format: processingFormat,
     });
     convertedFilePath = outputPath;
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename("Converted Audio", trackNameBase);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(convertedFilePath, metadataPath, title);
 
+    const { extension: finalExtension, mimeType } = AUDIO_FORMAT_CONFIG[format];
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
-      mimeType: AUDIO_FORMAT_CONFIG[format].mimeType,
+      mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -661,7 +625,7 @@ export async function convertRemoteAudioToFormat({
       fileName,
       format,
       trackName: filename,
-      extension,
+      extension: finalExtension,
     };
   } finally {
     await Promise.all(
@@ -703,8 +667,13 @@ export async function trimFirst30Seconds({
       DEFAULT_TMP_PREFIX
     );
 
-    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
-    trimmedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const { extension: processingExtension, mimeType } = AUDIO_FORMAT_CONFIG[processingFormat];
+    const { extension: finalExtension } = AUDIO_FORMAT_CONFIG[format];
+    
+    trimmedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
 
     await trimAudioWithFade({
       inputPath: downloadedFilePath,
@@ -713,19 +682,19 @@ export async function trimFirst30Seconds({
       duration: 30,
       fadeInDuration: fadeDuration,
       fadeOutDuration: fadeDuration,
-      format,
+      format: processingFormat,
     });
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio (First 30s)", trackNameBase);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(trimmedFilePath, metadataPath, title);
 
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
       mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -734,7 +703,7 @@ export async function trimFirst30Seconds({
       fileName,
       format,
       trackName: filename,
-      extension,
+      extension: finalExtension,
     };
   } finally {
     await Promise.all(
@@ -788,8 +757,13 @@ export async function trimLast30Seconds({
       DEFAULT_TMP_PREFIX
     );
 
-    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
-    trimmedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const { extension: processingExtension, mimeType } = AUDIO_FORMAT_CONFIG[processingFormat];
+    const { extension: finalExtension } = AUDIO_FORMAT_CONFIG[format];
+    
+    trimmedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
 
     const startTime = duration - 30;
 
@@ -800,19 +774,19 @@ export async function trimLast30Seconds({
       duration: 30,
       fadeInDuration: fadeDuration,
       fadeOutDuration: fadeDuration,
-      format,
+      format: processingFormat,
     });
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio (Last 30s)", trackNameBase);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(trimmedFilePath, metadataPath, title);
 
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
       mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -821,7 +795,7 @@ export async function trimLast30Seconds({
       fileName,
       format,
       trackName: filename,
-      extension,
+      extension: finalExtension,
     };
   } finally {
     await Promise.all(
@@ -873,8 +847,13 @@ export async function processAudioFromUrl({
       DEFAULT_TMP_PREFIX
     );
 
-    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
-    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const { extension: processingExtension, mimeType } = AUDIO_FORMAT_CONFIG[processingFormat];
+    const { extension: finalExtension } = AUDIO_FORMAT_CONFIG[format];
+    
+    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
 
     await trimAudioWithFade({
       inputPath: downloadedFilePath,
@@ -883,19 +862,21 @@ export async function processAudioFromUrl({
       duration,
       fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
       fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
-      format,
+      format: processingFormat,
     });
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio", trackNameBase);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(processedFilePath, metadataPath, title);
 
+    // Use finalExtension (.m4r) for filename but processingExtension (.m4a) file path
+    const finalFileName = `${filename}${finalExtension}`;
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
       mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -906,8 +887,8 @@ export async function processAudioFromUrl({
       downloadUrl,
       fileName,
       format,
-      trackName: filename,
-      extension,
+      trackName: finalFileName,
+      extension: finalExtension,
     };
   } finally {
     await Promise.all(
@@ -994,8 +975,13 @@ export async function processAudioFromFile({
       DEFAULT_TMP_PREFIX
     );
 
-    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
-    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const { extension: processingExtension, mimeType } = AUDIO_FORMAT_CONFIG[processingFormat];
+    const { extension: finalExtension } = AUDIO_FORMAT_CONFIG[format];
+    
+    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
 
     await trimAudioWithFade({
       inputPath: filePath,
@@ -1004,20 +990,20 @@ export async function processAudioFromFile({
       duration,
       fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
       fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
-      format,
+      format: processingFormat,
     });
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename("Trimmed Audio", trackNameBase);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(processedFilePath, metadataPath, title);
 
-    // Use S3_EXPORTS_FOLDER for exported files
+    // Use finalExtension (.m4r) for filename but processingExtension (.m4a) file path
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
       mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -1026,7 +1012,7 @@ export async function processAudioFromFile({
       fileName,
       format,
       trackName: filename,
-      extension,
+      extension: finalExtension,
     };
   } finally {
     await Promise.all(
@@ -1084,7 +1070,11 @@ export async function processDualTrackAudio({
       DEFAULT_TMP_PREFIX
     );
 
-    const { extension, mimeType } = AUDIO_FORMAT_CONFIG[format];
+    // For m4r format, use m4a internally for all processing
+    const isM4R = format === "m4r";
+    const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+    const { extension: processingExtension, mimeType } = AUDIO_FORMAT_CONFIG[processingFormat];
+    const { extension: finalExtension } = AUDIO_FORMAT_CONFIG[format];
 
     // Download both tracks
     const [vocalsResponse, musicResponse] = await Promise.all([
@@ -1104,17 +1094,14 @@ export async function processDualTrackAudio({
       pipeline(Readable.fromWeb(musicResponse.body as any), fs.createWriteStream(musicFilePath)),
     ]);
 
-    // For m4r format, use .m4a extension during processing (ffmpeg doesn't recognize .m4r)
-    const isM4R = format === "m4r";
-    const processingExtension = isM4R ? ".m4a" : extension;
-    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    processedFilePath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
 
     if (vocalsEnabled && musicEnabled) {
       // Trim both tracks first
       vocalsTrimmedPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-vocals-trimmed.wav`);
       musicTrimmedPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}-music-trimmed.wav`);
 
-      if (!vocalsFilePath || !musicFilePath || !vocalsTrimmedPath || !musicTrimmedPath) {
+      if (!vocalsFilePath || !musicFilePath || !vocalsTrimmedPath || !musicTrimmedPath || !processedFilePath) {
         throw new Error("Failed to create temporary file paths");
       }
 
@@ -1140,12 +1127,9 @@ export async function processDualTrackAudio({
       ]);
 
       // Combine tracks using ffmpeg
-      if (!processedFilePath || !vocalsTrimmedPath || !musicTrimmedPath) {
-        throw new Error("Failed to create processed file path");
-      }
       const finalVocalsPath = vocalsTrimmedPath;
       const finalMusicPath = musicTrimmedPath;
-      const finalProcessedPath = isM4R ? processedFilePath.replace(/\.m4r$/, ".m4a") : processedFilePath;
+      const finalProcessedPath = processedFilePath!; // Non-null assertion: already checked above
       await new Promise<void>((resolve, reject) => {
         let command = ffmpeg()
           .input(finalVocalsPath)
@@ -1164,25 +1148,13 @@ export async function processDualTrackAudio({
           command = command.audioFilters(`afade=t=out:st=${fadeOutStart}:d=${fadeOutDuration}`);
         }
 
-        // Apply format conversion - for m4r, use m4a format configuration during processing
-        const processingFormat: AudioExportFormat = isM4R ? "m4a" : format;
+        // Apply format conversion
         const formatConfig = AUDIO_FORMAT_CONFIG[processingFormat];
         command = formatConfig.apply(command);
 
         command
           .output(finalProcessedPath)
-          .on("end", async () => {
-            // Rename .m4a to .m4r if needed
-            if (isM4R && processedFilePath && finalProcessedPath !== processedFilePath) {
-              try {
-                await fs.promises.rename(finalProcessedPath, processedFilePath);
-              } catch (renameError) {
-                reject(new Error(`Failed to rename m4a to m4r: ${renameError instanceof Error ? renameError.message : String(renameError)}`));
-                return;
-              }
-            }
-            resolve();
-          })
+          .on("end", () => resolve())
           .on("error", (err) => reject(err))
           .run();
       });
@@ -1198,7 +1170,7 @@ export async function processDualTrackAudio({
         duration,
         fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
         fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
-        format,
+        format: processingFormat,
       });
     } else if (musicEnabled) {
       // Only music
@@ -1212,7 +1184,7 @@ export async function processDualTrackAudio({
         duration,
         fadeInDuration: fadeInEnabled ? fadeInDuration : 0,
         fadeOutDuration: fadeOutEnabled ? fadeOutDuration : 0,
-        format,
+        format: processingFormat,
       });
     } else {
       throw new Error("At least one track must be enabled");
@@ -1230,15 +1202,15 @@ export async function processDualTrackAudio({
 
     // Add metadata with branded title
     const { title, filename } = generateAudioTitleAndFilename(actionTitle, trackNameBase);
-    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${extension}`);
+    metadataPath = path.join(TEMP_DIR, `${Date.now()}-${randomUUID()}${processingExtension}`);
     await addMetadataToAudio(processedFilePath!, metadataPath, title);
 
-    // Upload to S3 exports folder
+    // Upload to S3 exports folder - use finalExtension (.m4r) for filename but processingExtension (.m4a) file path
     const { downloadUrl, fileName } = await uploadAudioToS3({
       filePath: metadataPath,
       mimeType,
       downloadName: filename,
-      extension,
+      extension: finalExtension,
       config: s3UploadConfig,
     });
 
@@ -1247,7 +1219,7 @@ export async function processDualTrackAudio({
       fileName,
       format,
       trackName: filename,
-      extension,
+      extension: finalExtension,
     };
   } finally {
     // Clean up temp files
