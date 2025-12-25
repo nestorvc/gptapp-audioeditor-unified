@@ -714,7 +714,9 @@ export function AudioEditor() {
         if (waveformSectionRef.current && waveformRef.current) {
           setTrimmerLinePosition(calculateSectionPosition(trimmerPosition));
           // Pins use same calculation as trimmer line, with small adjustment for alignment
-          const pinAdjustment = 2; // +2% adjustment for both dual and single mode
+          // Mobile needs extra 2% adjustment (4% total) vs desktop/tablet (2%)
+          const isMobile = typeof window !== 'undefined' && window.innerWidth <= 424;
+          const pinAdjustment = isMobile ? 4 : 2; // +4% for mobile, +2% for desktop/tablet
           setStartPinPosition(calculateSectionPosition(startTrim) + pinAdjustment);
           setEndPinPosition(calculateSectionPosition(endTrim) + pinAdjustment);
         }
